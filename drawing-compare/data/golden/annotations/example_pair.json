@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "pair_id": "example_pair",
+  "fields": [
+    {
+      "field_id": "title_project",
+      "expected": "matched",
+      "optional_notes": "Same project name on both sheets"
+    },
+    {
+      "field_id": "revision",
+      "expected": "changed"
+    }
+  ],
+  "review_note": "Synthetic example — replace with real labeling.",
+  "pair_level_expected": "matched",
+  "metadata": {
+    "labeled_by": "template",
+    "labeling_guide_version": 1
+  }
+}

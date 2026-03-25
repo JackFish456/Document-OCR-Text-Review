@@ -1,0 +1,16 @@
+{
+  "run_id": "manual_visual_smoke",
+  "ocr_provider": "echo",
+  "source_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.02.VDR.02.01.pdf",
+  "target_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.01.VDR.01.01.pdf",
+  "summary": {
+    "total_source": 1,
+    "matched": 1,
+    "changed": 0,
+    "missing": 0,
+    "extra_target": 0,
+    "uncertain": 0
+  },
+  "review_flags": 0,
+  "visual_annotation_count": 0
+}

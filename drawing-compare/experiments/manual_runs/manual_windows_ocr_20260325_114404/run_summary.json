@@ -1,0 +1,16 @@
+{
+  "run_id": "manual_windows_ocr_20260325_114404",
+  "ocr_provider": "windows_ocr",
+  "source_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.01.VDR.01.01.pdf",
+  "target_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.02.VDR.02.01.pdf",
+  "summary": {
+    "total_source": 141,
+    "matched": 130,
+    "changed": 10,
+    "missing": 1,
+    "extra_target": 9,
+    "uncertain": 0
+  },
+  "review_flags": 30,
+  "visual_annotation_count": 20
+}

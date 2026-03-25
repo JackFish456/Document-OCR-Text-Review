@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "default_manifest": "example_manifest.json",
+  "manifests": [
+    {
+      "file": "example_manifest.json",
+      "description": "Sample layout; replace entries as you add real drawing pairs."
+    },
+    {
+      "file": "example_wrapped.json",
+      "description": "Same template pair using GoldenManifestDocument (object with pairs array)."
+    }
+  ]
+}

@@ -1,0 +1,744 @@
+{
+  "schema_version": "1.0",
+  "comparison_id": "a2349136-c949-4a2e-b3e0-edd026d2166c",
+  "source_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.01.VDR.01.01.pdf",
+  "target_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\test_inputs\\20037673-94.03.48.100-000154.02.VDR.02.01.pdf",
+  "ocr_provider": "windows_ocr",
+  "source_page_number": 1,
+  "target_page_number": 1,
+  "source_image_width": 4096,
+  "source_image_height": 2650,
+  "target_image_width": 4096,
+  "target_image_height": 2650,
+  "summary": {
+    "total_source": 141,
+    "matched": 130,
+    "changed": 10,
+    "missing": 1,
+    "extra_target": 9,
+    "uncertain": 0
+  },
+  "annotation_count": 20,
+  "annotations": [
+    {
+      "annotation_id": "ann-001",
+      "index": 1,
+      "match_type": "changed_value",
+      "source_field_id": "auto-3-5a950c5b",
+      "target_field_id": "auto-3-be1cba23",
+      "source_text": "#12-14X1-1/4 SDS",
+      "target_text": "#12-14X1-1/4 SDS W/WASHER",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.800; token_overlap=0.875; regex_compatibility=1.000; composite=0.845 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 1298.2599060457517,
+        "y1": 1137.898897883868,
+        "x2": 1560.5837418300655,
+        "y2": 1169.281462467078
+      },
+      "target_bbox": {
+        "x1": 1298.2599060457517,
+        "y1": 1137.864690838438,
+        "x2": 1748.7342728758172,
+        "y2": 1169.2912650830817
+      },
+      "source_bbox_normalized": {
+        "x1": 0.316958,
+        "y1": 0.429396,
+        "x2": 0.381002,
+        "y2": 0.441238
+      },
+      "target_bbox_normalized": {
+        "x1": 0.316958,
+        "y1": 0.429383,
+        "x2": 0.426937,
+        "y2": 0.441242
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.316958,
+        "y1": 0.429383,
+        "x2": 0.426937,
+        "y2": 0.441242
+      }
+    },
+    {
+      "annotation_id": "ann-002",
+      "index": 2,
+      "match_type": "changed_value",
+      "source_field_id": "auto-43-72b52ba4",
+      "target_field_id": "auto-37-cd525ef8",
+      "source_text": "4' - 0\"",
+      "target_text": "7' - 0\"",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.857; token_overlap=0.595; regex_compatibility=1.000; composite=0.821 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 3081.544934640523,
+        "y1": 1239.9708834561434,
+        "x2": 3112.5825163398695,
+        "y2": 1318.826087797531
+      },
+      "target_bbox": {
+        "x1": 2463.8782679738565,
+        "y1": 1194.7628522160078,
+        "x2": 2543.9146241830067,
+        "y2": 1226.1870779172339
+      },
+      "source_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.467914,
+        "x2": 0.759908,
+        "y2": 0.49767
+      },
+      "target_bbox_normalized": {
+        "x1": 0.601533,
+        "y1": 0.450854,
+        "x2": 0.621073,
+        "y2": 0.462712
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.601533,
+        "y1": 0.450854,
+        "x2": 0.621073,
+        "y2": 0.462712
+      }
+    },
+    {
+      "annotation_id": "ann-003",
+      "index": 3,
+      "match_type": "changed_value",
+      "source_field_id": "auto-44-e9f09fab",
+      "target_field_id": "auto-42-abf67950",
+      "source_text": "4' - 0\"",
+      "target_text": "5' - 0\"",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.857; token_overlap=0.595; regex_compatibility=1.000; composite=0.821 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 3081.544934640523,
+        "y1": 1593.5129512440076,
+        "x2": 3112.5825163398695,
+        "y2": 1672.368155585395
+      },
+      "target_bbox": {
+        "x1": 3081.544934640523,
+        "y1": 930.3762917566781,
+        "x2": 3112.5825163398695,
+        "y2": 1009.2314960980657
+      },
+      "source_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.601326,
+        "x2": 0.759908,
+        "y2": 0.631082
+      },
+      "target_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.351085,
+        "x2": 0.759908,
+        "y2": 0.380842
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.351085,
+        "x2": 0.759908,
+        "y2": 0.380842
+      }
+    },
+    {
+      "annotation_id": "ann-004",
+      "index": 4,
+      "match_type": "changed_value",
+      "source_field_id": "auto-76-bc7d0e8d",
+      "target_field_id": "auto-43-42babea5",
+      "source_text": "1' - 0\"",
+      "target_text": "3' - 0\"",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.857; token_overlap=0.595; regex_compatibility=1.000; composite=0.821 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 1130.4993872549019,
+        "y1": 199.96880979248974,
+        "x2": 1210.0122549019607,
+        "y2": 231.00224552732524
+      },
+      "target_bbox": {
+        "x1": 3081.544934640523,
+        "y1": 1283.918359544542,
+        "x2": 3112.5825163398695,
+        "y2": 1362.773665996513
+      },
+      "source_bbox_normalized": {
+        "x1": 0.276001,
+        "y1": 0.07546,
+        "x2": 0.295413,
+        "y2": 0.087171
+      },
+      "target_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.484497,
+        "x2": 0.759908,
+        "y2": 0.514254
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.75233,
+        "y1": 0.484497,
+        "x2": 0.759908,
+        "y2": 0.514254
+      }
+    },
+    {
+      "annotation_id": "ann-005",
+      "index": 5,
+      "match_type": "changed_value",
+      "source_field_id": "auto-77-459efb41",
+      "target_field_id": "auto-82-4fb793ae",
+      "source_text": "1' - 0\"",
+      "target_text": "1' - 0 1/16\"",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.737; token_overlap=0.702; regex_compatibility=1.000; composite=0.767 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 1494.5078635620914,
+        "y1": 199.96880979248974,
+        "x2": 1574.0207312091504,
+        "y2": 231.00224552732524
+      },
+      "target_bbox": {
+        "x1": 1460.0853758169935,
+        "y1": 199.96880979248974,
+        "x2": 1608.4432189542483,
+        "y2": 231.00224552732524
+      },
+      "source_bbox_normalized": {
+        "x1": 0.36487,
+        "y1": 0.07546,
+        "x2": 0.384282,
+        "y2": 0.087171
+      },
+      "target_bbox_normalized": {
+        "x1": 0.356466,
+        "y1": 0.07546,
+        "x2": 0.392686,
+        "y2": 0.087171
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.356466,
+        "y1": 0.07546,
+        "x2": 0.392686,
+        "y2": 0.087171
+      }
+    },
+    {
+      "annotation_id": "ann-006",
+      "index": 6,
+      "match_type": "changed_value",
+      "source_field_id": "auto-78-3235866b",
+      "target_field_id": "auto-83-fa89dc5c",
+      "source_text": "1' - 0\"",
+      "target_text": "1' - 0 1/16\"",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.737; token_overlap=0.702; regex_compatibility=1.000; composite=0.767 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 1845.0639297385624,
+        "y1": 199.96880979248974,
+        "x2": 1924.5765931372548,
+        "y2": 231.00224552732524
+      },
+      "target_bbox": {
+        "x1": 1810.6413398692812,
+        "y1": 199.96880979248974,
+        "x2": 1958.9985702614379,
+        "y2": 231.00224552732524
+      },
+      "source_bbox_normalized": {
+        "x1": 0.450455,
+        "y1": 0.07546,
+        "x2": 0.469867,
+        "y2": 0.087171
+      },
+      "target_bbox_normalized": {
+        "x1": 0.442051,
+        "y1": 0.07546,
+        "x2": 0.478271,
+        "y2": 0.087171
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.442051,
+        "y1": 0.07546,
+        "x2": 0.478271,
+        "y2": 0.087171
+      }
+    },
+    {
+      "annotation_id": "ann-007",
+      "index": 7,
+      "match_type": "changed_value",
+      "source_field_id": "auto-86-dc33316d",
+      "target_field_id": "auto-95-0368d7bf",
+      "source_text": "W/ WASHER (FASTENER # 17A)",
+      "target_text": "W/ WASHER (FASTENER",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.844; token_overlap=0.875; regex_compatibility=0.750; composite=0.837 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 307.91934742647055,
+        "y1": 573.6434214042895,
+        "x2": 784.4846303104575,
+        "y2": 605.0268539274582
+      },
+      "target_bbox": {
+        "x1": 1511.1257148692812,
+        "y1": 646.9729625817502,
+        "x2": 1886.8010620915034,
+        "y2": 678.4170487914423
+      },
+      "source_bbox_normalized": {
+        "x1": 0.075176,
+        "y1": 0.216469,
+        "x2": 0.191525,
+        "y2": 0.228312
+      },
+      "target_bbox_normalized": {
+        "x1": 0.368927,
+        "y1": 0.244141,
+        "x2": 0.460645,
+        "y2": 0.256006
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.368927,
+        "y1": 0.244141,
+        "x2": 0.460645,
+        "y2": 0.256006
+      }
+    },
+    {
+      "annotation_id": "ann-008",
+      "index": 8,
+      "match_type": "changed_value",
+      "source_field_id": "auto-125-4ef33ca7",
+      "target_field_id": "auto-130-65ad8bc3",
+      "source_text": "06/08/2024",
+      "target_text": "08/06/2024",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.800; token_overlap=0.900; regex_compatibility=1.000; composite=0.851 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 3568.5645424836603,
+        "y1": 2479.8386352230805,
+        "x2": 3672.3737745098038,
+        "y2": 2500.645096133454
+      },
+      "target_bbox": {
+        "x1": 3568.5645424836603,
+        "y1": 2479.8386352230805,
+        "x2": 3672.3737745098038,
+        "y2": 2500.645096133454
+      },
+      "source_bbox_normalized": {
+        "x1": 0.871232,
+        "y1": 0.935788,
+        "x2": 0.896576,
+        "y2": 0.94364
+      },
+      "target_bbox_normalized": {
+        "x1": 0.871232,
+        "y1": 0.935788,
+        "x2": 0.896576,
+        "y2": 0.94364
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.871232,
+        "y1": 0.935788,
+        "x2": 0.896576,
+        "y2": 0.94364
+      }
+    },
+    {
+      "annotation_id": "ann-009",
+      "index": 9,
+      "match_type": "changed_value",
+      "source_field_id": "auto-139-7b104777",
+      "target_field_id": "auto-148-cb34265b",
+      "source_text": "APPROVED - 09/11/2024",
+      "target_text": "APPROVED - 12/31/2024",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.842; token_overlap=0.588; regex_compatibility=1.000; composite=0.810 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 17.021714154411764,
+        "y1": 2069.810728593306,
+        "x2": 57.17857689950981,
+        "y2": 2529.5454545454545
+      },
+      "target_bbox": {
+        "x1": 17.021714154411764,
+        "y1": 2069.810728593306,
+        "x2": 57.17857689950981,
+        "y2": 2529.5454545454545
+      },
+      "source_bbox_normalized": {
+        "x1": 0.004156,
+        "y1": 0.781061,
+        "x2": 0.01396,
+        "y2": 0.954545
+      },
+      "target_bbox_normalized": {
+        "x1": 0.004156,
+        "y1": 0.781061,
+        "x2": 0.01396,
+        "y2": 0.954545
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.004156,
+        "y1": 0.781061,
+        "x2": 0.01396,
+        "y2": 0.954545
+      }
+    },
+    {
+      "annotation_id": "ann-010",
+      "index": 10,
+      "match_type": "changed_value",
+      "source_field_id": "auto-140-2cc0115e",
+      "target_field_id": "auto-133-a90cf34b",
+      "source_text": "APPROVED - 09/11/2024",
+      "target_text": "10/11/2024",
+      "confidence": 1.0,
+      "reason": "classification=changed_value; normalized_label_similarity=1.000; normalized_value_similarity=0.621; token_overlap=0.510; regex_compatibility=1.000; composite=0.652 (weights label=0.00 value=0.64 token=0.22 regex=0.15)",
+      "source_bbox": {
+        "x1": 17.021714154411764,
+        "y1": 2069.810728593306,
+        "x2": 57.17857689950981,
+        "y2": 2529.5454545454545
+      },
+      "target_bbox": {
+        "x1": 3568.5616830065364,
+        "y1": 2451.586679015497,
+        "x2": 3672.37091503268,
+        "y2": 2472.39313992587
+      },
+      "source_bbox_normalized": {
+        "x1": 0.004156,
+        "y1": 0.781061,
+        "x2": 0.01396,
+        "y2": 0.954545
+      },
+      "target_bbox_normalized": {
+        "x1": 0.871231,
+        "y1": 0.925127,
+        "x2": 0.896575,
+        "y2": 0.932979
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.871231,
+        "y1": 0.925127,
+        "x2": 0.896575,
+        "y2": 0.932979
+      }
+    },
+    {
+      "annotation_id": "ann-011",
+      "index": 11,
+      "match_type": "missing_in_target",
+      "source_field_id": "auto-40-3a4c56d7",
+      "target_field_id": null,
+      "source_text": "F",
+      "target_text": "",
+      "confidence": 1.0,
+      "reason": "No target field met min_pair_composite=0.400 for this source row",
+      "source_bbox": {
+        "x1": 2769.3290441176473,
+        "y1": 357.0225070221255,
+        "x2": 2788.5292075163397,
+        "y2": 388.43493895097214
+      },
+      "target_bbox": null,
+      "source_bbox_normalized": {
+        "x1": 0.676106,
+        "y1": 0.134725,
+        "x2": 0.680793,
+        "y2": 0.146579
+      },
+      "target_bbox_normalized": null,
+      "overlay_bbox_normalized": {
+        "x1": 0.676106,
+        "y1": 0.134725,
+        "x2": 0.680793,
+        "y2": 0.146579
+      }
+    },
+    {
+      "annotation_id": "ann-012",
+      "index": 12,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-36-7b7e83ff",
+      "source_text": "",
+      "target_text": "GIRT EL. 1.1",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 2465.4609885620916,
+        "y1": 1161.4099618160362,
+        "x2": 2648.3756127450984,
+        "y2": 1192.8341875172625
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.601919,
+        "y1": 0.438268,
+        "x2": 0.646576,
+        "y2": 0.450126
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.601919,
+        "y1": 0.438268,
+        "x2": 0.646576,
+        "y2": 0.450126
+      }
+    },
+    {
+      "annotation_id": "ann-013",
+      "index": 13,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-40-6e5120f8",
+      "source_text": "",
+      "target_text": "E",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 2768.5377859477126,
+        "y1": 356.94048669603137,
+        "x2": 2789.6493055555557,
+        "y2": 388.4585520233771
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.675913,
+        "y1": 0.134695,
+        "x2": 0.681067,
+        "y2": 0.146588
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.675913,
+        "y1": 0.134695,
+        "x2": 0.681067,
+        "y2": 0.146588
+      }
+    },
+    {
+      "annotation_id": "ann-014",
+      "index": 14,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-53-21174d47",
+      "source_text": "",
+      "target_text": "0' - 6\"",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 2838.608864379085,
+        "y1": 687.0954272722958,
+        "x2": 2869.646446078432,
+        "y2": 765.9504784478081
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.69302,
+        "y1": 0.259281,
+        "x2": 0.700597,
+        "y2": 0.289038
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.69302,
+        "y1": 0.259281,
+        "x2": 0.700597,
+        "y2": 0.289038
+      }
+    },
+    {
+      "annotation_id": "ann-015",
+      "index": 15,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-54-6d883001",
+      "source_text": "",
+      "target_text": "0' - 6\"1' - 0\"",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 2838.608864379085,
+        "y1": 1063.0036440762606,
+        "x2": 2869.646446078432,
+        "y2": 1208.1725245774394
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.69302,
+        "y1": 0.401133,
+        "x2": 0.700597,
+        "y2": 0.455914
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.69302,
+        "y1": 0.401133,
+        "x2": 0.700597,
+        "y2": 0.455914
+      }
+    },
+    {
+      "annotation_id": "ann-016",
+      "index": 16,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-72-ba47256d",
+      "source_text": "",
+      "target_text": "INSULATION",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 2312.3398692810456,
+        "y1": 2346.024757924706,
+        "x2": 2500.4912173202615,
+        "y2": 2377.457254583185
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.564536,
+        "y1": 0.885292,
+        "x2": 0.610471,
+        "y2": 0.897154
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.564536,
+        "y1": 0.885292,
+        "x2": 0.610471,
+        "y2": 0.897154
+      }
+    },
+    {
+      "annotation_id": "ann-017",
+      "index": 17,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-81-22986fa6",
+      "source_text": "",
+      "target_text": "0' - 11 15/16\"",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 1079.063419117647,
+        "y1": 199.96880979248974,
+        "x2": 1261.84375,
+        "y2": 231.00224552732524
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.263443,
+        "y1": 0.07546,
+        "x2": 0.308067,
+        "y2": 0.087171
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.263443,
+        "y1": 0.07546,
+        "x2": 0.308067,
+        "y2": 0.087171
+      }
+    },
+    {
+      "annotation_id": "ann-018",
+      "index": 18,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-131-07a5633d",
+      "source_text": "",
+      "target_text": "0",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 3117.9066584967322,
+        "y1": 2451.586679015497,
+        "x2": 3129.523897058824,
+        "y2": 2472.39313992587
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.761208,
+        "y1": 0.925127,
+        "x2": 0.764044,
+        "y2": 0.932979
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.761208,
+        "y1": 0.925127,
+        "x2": 0.764044,
+        "y2": 0.932979
+      }
+    },
+    {
+      "annotation_id": "ann-019",
+      "index": 19,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-132-f9278ccf",
+      "source_text": "",
+      "target_text": "ISSUED FOR CONSTRUCTION",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 3173.296364379085,
+        "y1": 2451.586679015497,
+        "x2": 3470.884395424837,
+        "y2": 2472.39313992587
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.774731,
+        "y1": 0.925127,
+        "x2": 0.847384,
+        "y2": 0.932979
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.774731,
+        "y1": 0.925127,
+        "x2": 0.847384,
+        "y2": 0.932979
+      }
+    },
+    {
+      "annotation_id": "ann-020",
+      "index": 20,
+      "match_type": "extra_in_target",
+      "source_field_id": null,
+      "target_field_id": "auto-146-c249be31",
+      "source_text": "",
+      "target_text": "GAD-06 - 24072 Enclosure General Arrangement Drawing, Rev. B",
+      "confidence": 1.0,
+      "reason": "No source field aligned to this target row under greedy matching",
+      "source_bbox": null,
+      "target_bbox": {
+        "x1": 3083.089460784314,
+        "y1": 2535.217493230646,
+        "x2": 3858.5861928104578,
+        "y2": 2571.1604185778683
+      },
+      "source_bbox_normalized": null,
+      "target_bbox_normalized": {
+        "x1": 0.752707,
+        "y1": 0.956686,
+        "x2": 0.942038,
+        "y2": 0.970249
+      },
+      "overlay_bbox_normalized": {
+        "x1": 0.752707,
+        "y1": 0.956686,
+        "x2": 0.942038,
+        "y2": 0.970249
+      }
+    }
+  ]
+}

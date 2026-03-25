@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "comparison_id": "b9c808ee-1e82-47d2-893e-8ece0d31b854",
+  "source_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\tmp\\test_visual_diff\\20ec28af89904ec2bb2ba053a8e58c9a\\source.png",
+  "target_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\tmp\\test_visual_diff\\20ec28af89904ec2bb2ba053a8e58c9a\\target.png",
+  "ocr_provider": "stub",
+  "source_page_number": 1,
+  "target_page_number": 1,
+  "source_image_width": 20,
+  "source_image_height": 20,
+  "target_image_width": 20,
+  "target_image_height": 20,
+  "summary": {
+    "total_source": 0,
+    "matched": 0,
+    "changed": 0,
+    "missing": 0,
+    "extra_target": 0,
+    "uncertain": 0
+  },
+  "annotation_count": 0,
+  "annotations": []
+}

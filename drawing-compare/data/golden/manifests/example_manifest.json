@@ -1,0 +1,8 @@
+[
+  {
+    "pair_id": "example_pair",
+    "drawing_a_ref": "data/golden/pairs/example_a.png",
+    "drawing_b_ref": "data/golden/pairs/example_b.png",
+    "annotation_path": "data/golden/annotations/example_pair.json"
+  }
+]

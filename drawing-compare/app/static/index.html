@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Drawing compare</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <main class="shell">
+    <div class="path-row" id="pathRow">
+      <div class="path-row-inner">
+        <button type="button" class="tile tile-input" id="primaryTile" aria-label="Choose primary document">
+          <span class="tile-label">Primary Document</span>
+          <span class="tile-file" id="primaryFileName"></span>
+        </button>
+        <input type="file" id="primaryInput" class="sr-only" />
+        <span class="arrow" aria-hidden="true">→</span>
+        <button type="button" class="tile tile-input" id="secondaryTile" aria-label="Choose secondary document">
+          <span class="tile-label">Secondary Document</span>
+          <span class="tile-file" id="secondaryFileName"></span>
+        </button>
+        <input type="file" id="secondaryInput" class="sr-only" />
+      </div>
+      <div class="path-loading" id="pathLoading" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="run-btn" id="runBtn" disabled>Run</button>
+    </div>
+    <p class="error" id="errorMsg" hidden></p>
+
+    <div class="outputs">
+      <a class="tile tile-output" id="wordTile" tabindex="-1" aria-disabled="true">
+        <span class="tile-label">Word</span>
+        <span class="tile-hint" data-empty>Not available yet</span>
+      </a>
+      <a class="tile tile-output" id="pdfTile" tabindex="-1" aria-disabled="true">
+        <span class="tile-label">Formatted PDF</span>
+        <span class="tile-hint" data-empty>Not available yet</span>
+      </a>
+    </div>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

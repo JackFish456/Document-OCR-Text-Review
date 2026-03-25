@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visual Overlay Diff Report</title>
+  <style>
+    :root {
+      --paper: #faf7f1;
+      --ink: #16202b;
+      --muted: #5d6970;
+      --line: rgba(22, 32, 43, 0.12);
+      --accent: #0b5c80;
+      --panel: rgba(255,255,255,0.82);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(11, 92, 128, 0.18), transparent 32%),
+        radial-gradient(circle at top right, rgba(217, 119, 6, 0.14), transparent 28%),
+        linear-gradient(180deg, #edf3f6 0%, var(--paper) 45%, #f2eee5 100%);
+      font-family: "Bahnschrift", "Aptos", "Trebuchet MS", sans-serif;
+    }
+    .page { width: min(1380px, calc(100vw - 24px)); margin: 18px auto 32px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 12px 36px rgba(22, 32, 43, 0.12);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    h1, h2 {
+      margin: 0 0 10px;
+      font-family: "Rockwell", "Aptos Display", Georgia, serif;
+    }
+    .lede { color: var(--muted); max-width: 860px; line-height: 1.55; margin: 0; }
+    .meta, .stats {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+    .pill, .stat {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.74);
+    }
+    .k {
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .v { font-weight: 700; word-break: break-word; }
+    .mono { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 13px; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; }
+    .legend label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.9);
+      cursor: pointer;
+    }
+    .legend input { accent-color: var(--accent); }
+    .swatch {
+      width: 11px;
+      height: 11px;
+      border-radius: 999px;
+      display: inline-block;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
+    }
+    .viewer {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background:
+        linear-gradient(180deg, rgba(11, 92, 128, 0.06), rgba(255,255,255,0.92)),
+        repeating-linear-gradient(45deg, rgba(22, 32, 43, 0.02), rgba(22, 32, 43, 0.02) 8px, transparent 8px, transparent 16px);
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      max-height: 78vh;
+      display: block;
+      border-radius: 12px;
+      background: white;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; color: var(--muted); }
+    tbody tr:hover { background: rgba(11, 92, 128, 0.04); }
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+    .empty {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px dashed rgba(11, 92, 128, 0.28);
+      background: rgba(11, 92, 128, 0.06);
+      color: var(--muted);
+    }
+    @media (max-width: 720px) {
+      .page { width: min(100vw - 12px, 1380px); margin-top: 8px; }
+      .card { padding: 16px; }
+      .toolbar { align-items: flex-start; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="card">
+      <h1>Visual Overlay Diff Report</h1>
+      <p class="lede">The source drawing is the base canvas. Non-exact findings are projected into source coordinates and highlighted with mapped target overlays or translucent fills, so reviewers can scan changes without leaving the drawing.</p>
+      <div class="meta">
+        <div class="pill"><div class="k">Source drawing</div><div class="v mono">source.png</div></div>
+        <div class="pill"><div class="k">Target drawing</div><div class="v mono">target.png</div></div>
+        <div class="pill"><div class="k">Comparison ID</div><div class="v mono">b9c808ee-1e82-47d2-893e-8ece0d31b854</div></div>
+        <div class="pill"><div class="k">OCR provider</div><div class="v">stub</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Summary</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">Changed</div><div class="v">0</div></div>
+        <div class="stat"><div class="k">Missing</div><div class="v">0</div></div>
+        <div class="stat"><div class="k">Only on target</div><div class="v">0</div></div>
+        <div class="stat"><div class="k">Unclear</div><div class="v">0</div></div>
+        <div class="stat"><div class="k">Visible annotations</div><div class="v" id="visibleCount">0</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <div>
+          <h2>Canvas Review</h2>
+          <div class="note">Toggle finding types to simplify the view. Box numbers match the findings table below.</div>
+        </div>
+        <div class="legend"><label><input type="checkbox" data-toggle-type="changed_value" checked /><span class="swatch" style="background:#d97706"></span><span>Changed text (0)</span></label><label><input type="checkbox" data-toggle-type="missing_in_target" checked /><span class="swatch" style="background:#b42318"></span><span>Missing on target (0)</span></label><label><input type="checkbox" data-toggle-type="extra_in_target" checked /><span class="swatch" style="background:#0f766e"></span><span>Only on target (0)</span></label><label><input type="checkbox" data-toggle-type="uncertain" checked /><span class="swatch" style="background:#7c6f10"></span><span>Unclear match (0)</span></label></div>
+      </div>
+      <div class="viewer">
+        <div class="note">Mapped highlights: <strong>0</strong> non-exact finding(s). Canvas size: <span class="mono">20 x 20</span></div>
+        <canvas id="diffCanvas" width="20" height="20"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Findings</h2>
+      <div class="empty">No non-exact findings were generated for this run. The canvas is just the source base image.</div>
+    </section>
+  </div>
+
+  <script id="visual-diff-data" type="application/json">{"manifest": {"schema_version": "1.0", "comparison_id": "b9c808ee-1e82-47d2-893e-8ece0d31b854", "source_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\tmp\\test_visual_diff\\20ec28af89904ec2bb2ba053a8e58c9a\\source.png", "target_path": "C:\\Users\\Jack.Fisher\\OneDrive - Kiewit Corporation\\Desktop\\Document OCR Text Review\\drawing-compare\\data\\tmp\\test_visual_diff\\20ec28af89904ec2bb2ba053a8e58c9a\\target.png", "ocr_provider": "stub", "source_page_number": 1, "target_page_number": 1, "source_image_width": 20, "source_image_height": 20, "target_image_width": 20, "target_image_height": 20, "summary": {"total_source": 0, "matched": 0, "changed": 0, "missing": 0, "extra_target": 0, "uncertain": 0}, "annotation_count": 0, "annotations": []}, "base_image_data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAIAAAAC64paAAAAPElEQVQ4EZ3BAQEAAAABIP6PzgdV5FXkVeRV5FXkVeRV5FXkVeRV5FXkVeRV5FXkVeRV5FXkVeRV5FXkNU/jO9krAsmpAAAAAElFTkSuQmCC", "annotations": []}</script>
+  <script>
+    const payload = JSON.parse(document.getElementById("visual-diff-data").textContent);
+    const canvas = document.getElementById("diffCanvas");
+    const ctx = canvas.getContext("2d");
+    const visibleCount = document.getElementById("visibleCount");
+    const inputs = Array.from(document.querySelectorAll("[data-toggle-type]"));
+    const rows = Array.from(document.querySelectorAll("tbody tr[data-match-type]"));
+
+    function loadImage(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = dataUrl;
+      });
+    }
+
+    function activeTypes() {
+      return new Set(inputs.filter((input) => input.checked).map((input) => input.dataset.toggleType));
+    }
+
+    function drawBadge(x, y, text, color) {
+      const fontPx = Math.max(14, Math.round(Math.max(canvas.width, canvas.height) / 140));
+      ctx.save();
+      ctx.font = `700 ${fontPx}px Bahnschrift, Trebuchet MS, sans-serif`;
+      const textWidth = ctx.measureText(text).width;
+      const badgeW = Math.ceil(textWidth) + 16;
+      const badgeH = fontPx + 10;
+      const badgeY = Math.max(0, y - badgeH);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, badgeY, badgeW, badgeH);
+      ctx.fillStyle = "#ffffff";
+      ctx.textBaseline = "top";
+      ctx.fillText(text, x + 8, badgeY + 5);
+      ctx.restore();
+    }
+
+    function updateRows(types) {
+      let shown = 0;
+      rows.forEach((row) => {
+        const visible = types.has(row.dataset.matchType);
+        row.hidden = !visible;
+        if (visible) shown += 1;
+      });
+      visibleCount.textContent = String(shown);
+    }
+
+    async function init() {
+      const baseImage = await loadImage(payload.base_image_data_url);
+      const cropImages = {};
+      await Promise.all(payload.annotations.map(async (ann) => {
+        if (ann.target_crop_data_url) {
+          cropImages[ann.annotation_id] = await loadImage(ann.target_crop_data_url);
+        }
+      }));
+
+      function redraw() {
+        const types = activeTypes();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
+        payload.annotations.forEach((ann) => {
+          if (!types.has(ann.match_type)) return;
+          const box = ann.overlay_bbox_normalized;
+          const x = Math.round(box.x1 * canvas.width);
+          const y = Math.round(box.y1 * canvas.height);
+          const w = Math.max(1, Math.round((box.x2 - box.x1) * canvas.width));
+          const h = Math.max(1, Math.round((box.y2 - box.y1) * canvas.height));
+          if (ann.target_crop_data_url && cropImages[ann.annotation_id]) {
+            ctx.save();
+            ctx.globalAlpha = ann.crop_alpha;
+            ctx.drawImage(cropImages[ann.annotation_id], x, y, w, h);
+            ctx.restore();
+          }
+          if (ann.fill_alpha > 0) {
+            ctx.save();
+            ctx.globalAlpha = ann.fill_alpha;
+            ctx.fillStyle = ann.color_hex;
+            ctx.fillRect(x, y, w, h);
+            ctx.restore();
+          }
+          ctx.save();
+          ctx.strokeStyle = ann.color_hex;
+          ctx.lineWidth = Math.max(2, Math.round(Math.max(canvas.width, canvas.height) / 900));
+          ctx.strokeRect(x, y, w, h);
+          ctx.restore();
+          drawBadge(x, y, String(ann.index), ann.color_hex);
+        });
+        updateRows(types);
+      }
+
+      inputs.forEach((input) => input.addEventListener("change", redraw));
+      redraw();
+    }
+
+    init().catch((error) => console.error("visual diff init failed", error));
+  </script>
+</body>
+</html>

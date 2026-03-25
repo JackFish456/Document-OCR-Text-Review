@@ -1,0 +1,362 @@
+"""Field comparison: align source↔target fields and build a :class:`ComparisonReport`.
+
+Scoring uses RapidFuzz on normalized label/value, plus token overlap and regex-style
+value compatibility as fallbacks. Classification and confidence are derived from the
+weighted composite and explicit threshold rules.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Final
+
+from rapidfuzz import fuzz
+
+from app.models.extraction import ExtractedField
+from app.models.match import ComparisonReport, MatchResult, MatchType
+
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+
+_VALUE_PATTERN_RULES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+    ("ISO_DATE", re.compile(r"\b\d{4}-\d{2}-\d{2}\b")),
+    ("US_DATE", re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")),
+    ("DIMENSION", re.compile(r"\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?\b", re.IGNORECASE)),
+    ("DECIMAL", re.compile(r"\b\d+\.\d+\b")),
+    ("INTEGER", re.compile(r"\b\d+\b")),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FieldComparisonConfig:
+    """Tunable weights and thresholds for :class:`FieldComparisonEngine`."""
+
+    # Weights for composite score (renormalized if label leg is omitted).
+    weight_label: float = 0.45
+    weight_value: float = 0.35
+    weight_token_overlap: float = 0.12
+    weight_regex_compat: float = 0.08
+
+    # Alignment: minimum composite to accept a greedy pair (else leave unmatched).
+    min_pair_composite: float = 0.38
+
+    # Classification — label/value gates (0..1).
+    exact_label_similarity: float = 0.92
+    exact_value_similarity: float = 0.96
+    strong_label_similarity: float = 0.82
+    changed_value_max_value_similarity: float = 0.88
+    partial_composite_min: float = 0.52
+    uncertain_composite_max: float = 0.62
+
+    @staticmethod
+    def from_settings_like(
+        *,
+        fuzzy_match_threshold: float = 0.92,
+        fuzzy_changed_threshold: float = 0.75,
+        uncertain_score_low: float = 0.55,
+    ) -> FieldComparisonConfig:
+        """Map legacy :class:`~app.core.config.Settings` fuzzy fields to engine thresholds."""
+        return FieldComparisonConfig(
+            exact_label_similarity=max(0.85, fuzzy_match_threshold),
+            exact_value_similarity=max(0.9, fuzzy_match_threshold),
+            strong_label_similarity=max(0.72, fuzzy_changed_threshold),
+            changed_value_max_value_similarity=max(0.75, min(fuzzy_match_threshold, 0.9)),
+            partial_composite_min=max(0.45, fuzzy_changed_threshold - 0.1),
+            uncertain_composite_max=max(uncertain_score_low, 0.5),
+            min_pair_composite=max(0.3, uncertain_score_low - 0.15),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PairScoreBreakdown:
+    """Per-pair similarity signals in 0..1 (except reasons)."""
+
+    label_similarity: float
+    value_similarity: float
+    token_overlap: float
+    regex_compatibility: float
+    composite_score: float
+    reasons: tuple[str, ...]
+
+
+def _normalized_label(f: ExtractedField) -> str:
+    return (f.normalized_label or "").strip()
+
+
+def _normalized_value(f: ExtractedField) -> str:
+    return (f.normalized_value or "").strip()
+
+
+def _text_similarity(a: str, b: str) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    r = max(
+        float(fuzz.ratio(a, b)),
+        float(fuzz.token_sort_ratio(a, b)),
+    )
+    return min(1.0, r / 100.0)
+
+
+def _token_overlap_score(a: str, b: str) -> float:
+    toks_a = set(_TOKEN_RE.findall(a.lower()))
+    toks_b = set(_TOKEN_RE.findall(b.lower()))
+    if not toks_a and not toks_b:
+        return 1.0
+    if not toks_a or not toks_b:
+        return 0.0
+    inter = toks_a & toks_b
+    union = toks_a | toks_b
+    jaccard = len(inter) / len(union)
+    tsr = float(fuzz.token_set_ratio(a, b)) / 100.0
+    return min(1.0, 0.5 * jaccard + 0.5 * tsr)
+
+
+def _value_pattern_kind(s: str) -> str | None:
+    for name, pat in _VALUE_PATTERN_RULES:
+        if pat.search(s):
+            return name
+    return None
+
+
+def regex_compatibility(value_a: str, value_b: str) -> float:
+    """How compatible two value strings are under lightweight structural patterns."""
+    ka = _value_pattern_kind(value_a)
+    kb = _value_pattern_kind(value_b)
+    if ka and kb:
+        return 1.0 if ka == kb else 0.35
+    if ka or kb:
+        return 0.5
+    return 0.75
+
+
+def _effective_weights(
+    *,
+    label_a: str,
+    label_b: str,
+    cfg: FieldComparisonConfig,
+) -> tuple[float, float, float, float]:
+    w_l, w_v, w_t, w_r = (
+        cfg.weight_label,
+        cfg.weight_value,
+        cfg.weight_token_overlap,
+        cfg.weight_regex_compat,
+    )
+    if not label_a and not label_b:
+        total = w_v + w_t + w_r
+        return 0.0, w_v / total, w_t / total, w_r / total
+    return w_l, w_v, w_t, w_r
+
+
+def compute_pair_breakdown(
+    source: ExtractedField,
+    target: ExtractedField,
+    cfg: FieldComparisonConfig,
+) -> PairScoreBreakdown:
+    la, lb = _normalized_label(source), _normalized_label(target)
+    va, vb = _normalized_value(source), _normalized_value(target)
+
+    label_sim = _text_similarity(la, lb)
+    value_sim = _text_similarity(va, vb)
+    combined_for_tokens = f"{la} {va}".strip() or source.comparison_key()
+    combined_for_tokens_t = f"{lb} {vb}".strip() or target.comparison_key()
+    token_ov = _token_overlap_score(combined_for_tokens, combined_for_tokens_t)
+    regex_c = regex_compatibility(va or source.value, vb or target.value)
+
+    w_l, w_v, w_t, w_r = _effective_weights(label_a=la, label_b=lb, cfg=cfg)
+    composite = w_l * label_sim + w_v * value_sim + w_t * token_ov + w_r * regex_c
+
+    reasons = (
+        f"normalized_label_similarity={label_sim:.3f}",
+        f"normalized_value_similarity={value_sim:.3f}",
+        f"token_overlap={token_ov:.3f}",
+        f"regex_compatibility={regex_c:.3f}",
+        f"composite={composite:.3f} (weights label={w_l:.2f} value={w_v:.2f} "
+        f"token={w_t:.2f} regex={w_r:.2f})",
+    )
+    return PairScoreBreakdown(
+        label_similarity=label_sim,
+        value_similarity=value_sim,
+        token_overlap=token_ov,
+        regex_compatibility=regex_c,
+        composite_score=composite,
+        reasons=reasons,
+    )
+
+
+def _confidence_from(
+    composite: float,
+    match_type: MatchType,
+    breakdown: PairScoreBreakdown,
+) -> float:
+    base = max(0.0, min(1.0, composite))
+    if match_type == MatchType.EXACT_MATCH:
+        return max(base, min(1.0, (breakdown.label_similarity + breakdown.value_similarity) / 2))
+    if match_type == MatchType.CHANGED_VALUE:
+        return max(0.0, min(1.0, 0.55 + 0.45 * breakdown.label_similarity))
+    if match_type == MatchType.PARTIAL_MATCH:
+        return max(0.0, min(1.0, 0.45 + 0.55 * base))
+    if match_type == MatchType.UNCERTAIN:
+        return max(0.0, min(1.0, 0.35 + 0.4 * base))
+    return base
+
+
+def _classify_paired(
+    breakdown: PairScoreBreakdown,
+    cfg: FieldComparisonConfig,
+    *,
+    source: ExtractedField,
+    target: ExtractedField,
+) -> MatchType:
+    ls = breakdown.label_similarity
+    vs = breakdown.value_similarity
+    comp = breakdown.composite_score
+    la = _normalized_label(source)
+    lb = _normalized_label(target)
+    labels_absent = not la and not lb
+
+    if labels_absent:
+        if vs >= cfg.exact_value_similarity:
+            return MatchType.EXACT_MATCH
+        if vs <= cfg.changed_value_max_value_similarity and comp >= cfg.partial_composite_min:
+            return MatchType.CHANGED_VALUE
+        if comp >= cfg.partial_composite_min:
+            return MatchType.PARTIAL_MATCH
+        if comp <= cfg.uncertain_composite_max:
+            return MatchType.UNCERTAIN
+        return MatchType.PARTIAL_MATCH
+
+    if ls >= cfg.exact_label_similarity and vs >= cfg.exact_value_similarity:
+        return MatchType.EXACT_MATCH
+    if ls >= cfg.strong_label_similarity and vs <= cfg.changed_value_max_value_similarity:
+        return MatchType.CHANGED_VALUE
+    if ls >= cfg.strong_label_similarity and vs < cfg.exact_value_similarity:
+        return MatchType.PARTIAL_MATCH
+    if comp >= cfg.partial_composite_min:
+        return MatchType.PARTIAL_MATCH
+    if comp <= cfg.uncertain_composite_max:
+        return MatchType.UNCERTAIN
+    return MatchType.UNCERTAIN
+
+
+def _decision_reasons(match_type: MatchType, breakdown: PairScoreBreakdown) -> tuple[str, ...]:
+    head = (f"classification={match_type.value}",)
+    return head + breakdown.reasons
+
+
+class FieldComparisonEngine:
+    """Aligns fields with composite scoring and produces a :class:`ComparisonReport`."""
+
+    def __init__(self, config: FieldComparisonConfig | None = None) -> None:
+        self._cfg = config or FieldComparisonConfig()
+
+    @property
+    def config(self) -> FieldComparisonConfig:
+        return self._cfg
+
+    def _best_target_for_source(
+        self,
+        source: ExtractedField,
+        targets: list[ExtractedField],
+        used: set[str],
+    ) -> tuple[ExtractedField, PairScoreBreakdown] | None:
+        best: tuple[ExtractedField, PairScoreBreakdown] | None = None
+        for t in targets:
+            if t.field_id in used:
+                continue
+            bd = compute_pair_breakdown(source, t, self._cfg)
+            if best is None or bd.composite_score > best[1].composite_score:
+                best = (t, bd)
+        if best is None:
+            return None
+        if best[1].composite_score < self._cfg.min_pair_composite:
+            return None
+        return best
+
+    def align_and_score(
+        self,
+        source_fields: list[ExtractedField],
+        target_fields: list[ExtractedField],
+    ) -> list[tuple[ExtractedField, ExtractedField, PairScoreBreakdown]]:
+        used_target: set[str] = set()
+        out: list[tuple[ExtractedField, ExtractedField, PairScoreBreakdown]] = []
+        for src in source_fields:
+            hit = self._best_target_for_source(src, target_fields, used_target)
+            if hit is None:
+                continue
+            tgt, bd = hit
+            used_target.add(tgt.field_id)
+            out.append((src, tgt, bd))
+        return out
+
+    def build_match_results(
+        self,
+        source_fields: list[ExtractedField],
+        target_fields: list[ExtractedField],
+    ) -> list[MatchResult]:
+        pairs = self.align_and_score(source_fields, target_fields)
+        matched_src = {s.field_id for s, _, _ in pairs}
+        matched_tgt = {t.field_id for _, t, _ in pairs}
+        results: list[MatchResult] = []
+
+        for src, tgt, bd in pairs:
+            mtype = _classify_paired(bd, self._cfg, source=src, target=tgt)
+            conf = _confidence_from(bd.composite_score, mtype, bd)
+            reason = "; ".join(_decision_reasons(mtype, bd))
+            results.append(
+                MatchResult(
+                    source_field=src,
+                    target_field=tgt,
+                    match_type=mtype,
+                    confidence=conf,
+                    reason=reason,
+                )
+            )
+
+        for src in source_fields:
+            if src.field_id not in matched_src:
+                results.append(
+                    MatchResult(
+                        source_field=src,
+                        target_field=None,
+                        match_type=MatchType.MISSING_IN_TARGET,
+                        confidence=1.0,
+                        reason=(
+                            "No target field met min_pair_composite="
+                            f"{self._cfg.min_pair_composite:.3f} for this source row"
+                        ),
+                    )
+                )
+
+        for tgt in target_fields:
+            if tgt.field_id not in matched_tgt:
+                results.append(
+                    MatchResult(
+                        source_field=None,
+                        target_field=tgt,
+                        match_type=MatchType.EXTRA_IN_TARGET,
+                        confidence=1.0,
+                        reason="No source field aligned to this target row under greedy matching",
+                    )
+                )
+
+        return results
+
+    def build_report(
+        self,
+        source_fields: list[ExtractedField],
+        target_fields: list[ExtractedField],
+    ) -> ComparisonReport:
+        flat = self.build_match_results(source_fields, target_fields)
+        return ComparisonReport.from_flat_results(flat, total_source=len(source_fields))
+
+
+def compare_field_lists(
+    source_fields: list[ExtractedField],
+    target_fields: list[ExtractedField],
+    *,
+    config: FieldComparisonConfig | None = None,
+) -> ComparisonReport:
+    """Convenience: run :class:`FieldComparisonEngine` and return the report."""
+    return FieldComparisonEngine(config).build_report(source_fields, target_fields)
