@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 from app.models.comparison import CompareResponse
@@ -144,3 +145,46 @@ def test_markdown_sections_and_summary() -> None:
 def test_markdown_uncertain_section_present() -> None:
     r = _sample_response()
     assert "## Unclear matches (please review)" in build_comparison_markdown(r)
+
+
+def test_markdown_includes_annotated_pdf_link_and_numbered_findings() -> None:
+    r = _sample_response()
+    findings = [
+        SimpleNamespace(
+            index=1,
+            match_type=MatchType.CHANGED_VALUE,
+            source_text="REV: A",
+            target_text="REV: B",
+            confidence=0.88,
+        ),
+        SimpleNamespace(
+            index=2,
+            match_type=MatchType.MISSING_IN_TARGET,
+            source_text="NOTE: Remove",
+            target_text="",
+            confidence=1.0,
+        ),
+        SimpleNamespace(
+            index=3,
+            match_type=MatchType.EXTRA_IN_TARGET,
+            source_text="",
+            target_text="NOTE: Add",
+            confidence=1.0,
+        ),
+    ]
+
+    md = build_comparison_markdown(
+        r,
+        annotated_findings=findings,
+        annotated_pdf_href="visual_diff_overlay.pdf",
+    )
+
+    assert "**Open annotated PDF:** [visual_diff_overlay.pdf](visual_diff_overlay.pdf)" in md
+    assert "## Annotated findings" in md
+    assert (
+        "| Annotation # | Finding type | Source text | Target text | Confidence | Annotated visual |"
+        in md
+    )
+    assert md.count("[Open PDF](visual_diff_overlay.pdf)") == 3
+    assert md.index("| 1 | Changed text |") < md.index("| 2 | Missing on target |")
+    assert md.index("| 2 | Missing on target |") < md.index("| 3 | Only on target |")

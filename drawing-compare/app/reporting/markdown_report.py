@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Protocol
+
 from app.models.comparison import CompareResponse
 from app.models.match import MatchType
 from app.reporting.display import (
@@ -12,6 +15,18 @@ from app.reporting.display import (
     summarize_pair,
 )
 from app.reporting.narrative import build_executive_summary
+
+_EMBEDDED_REPORT_KEYS = frozenset({"comparison_json_report", "comparison_markdown_report"})
+
+
+class AnnotatedFinding(Protocol):
+    """Lightweight annotation protocol used by the reviewer-facing markdown table."""
+
+    index: int
+    match_type: MatchType
+    source_text: str
+    target_text: str
+    confidence: float
 
 
 def _esc_cell(s: object) -> str:
@@ -30,11 +45,22 @@ def _md_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_comparison_markdown(response: CompareResponse) -> str:
+def _clean_extras(extras: dict[str, object]) -> dict[str, object]:
+    return {k: v for k, v in extras.items() if k not in _EMBEDDED_REPORT_KEYS}
+
+
+def build_comparison_markdown(
+    response: CompareResponse,
+    *,
+    annotated_findings: Sequence[AnnotatedFinding] | None = None,
+    annotated_pdf_href: str | None = None,
+    annotated_visual_kind: str = "pdf",
+) -> str:
     """Human-readable Markdown with an executive summary and sectioned detail."""
     report = response.report
     s = report.summary
     flags = response.review_flags
+    clean_extras = _clean_extras(dict(response.extras))
     lines: list[str] = []
 
     lines.append("# Drawing comparison report")
@@ -43,6 +69,12 @@ def build_comparison_markdown(response: CompareResponse) -> str:
     lines.append("")
     lines.append(build_executive_summary(report, flags))
     lines.append("")
+    if annotated_pdf_href:
+        visual_label = "PDF" if annotated_visual_kind == "pdf" else "image"
+        lines.append(
+            f"**Open annotated {visual_label}:** [{annotated_pdf_href}]({annotated_pdf_href})"
+        )
+        lines.append("")
 
     lines.append("## Summary counts")
     lines.append("")
@@ -79,6 +111,43 @@ def build_comparison_markdown(response: CompareResponse) -> str:
             ],
         )
     )
+
+    if annotated_findings is not None:
+        lines.append("## Annotated findings")
+        lines.append("")
+        if not annotated_findings:
+            lines.append("_No overlay-visible findings were generated._")
+            lines.append("")
+        else:
+            rows = []
+            for finding in annotated_findings:
+                rows.append(
+                    [
+                        str(finding.index),
+                        match_type_plain(finding.match_type),
+                        str(finding.source_text or "—"),
+                        str(finding.target_text or "—"),
+                        f"{finding.confidence:.0%}",
+                        (
+                            f"[Open {annotated_visual_kind.upper()}]({annotated_pdf_href})"
+                            if annotated_pdf_href
+                            else "—"
+                        ),
+                    ]
+                )
+            lines.append(
+                _md_table(
+                    [
+                        "Annotation #",
+                        "Finding type",
+                        "Source text",
+                        "Target text",
+                        "Confidence",
+                        "Annotated visual",
+                    ],
+                    rows,
+                )
+            )
 
     def section_title(name: str) -> None:
         lines.append(f"## {name}")
@@ -197,11 +266,11 @@ def build_comparison_markdown(response: CompareResponse) -> str:
             )
         )
 
-    if response.extras:
+    if clean_extras:
         lines.append("## Additional notes")
         lines.append("")
         lines.append("```")
-        lines.append(str(response.extras))
+        lines.append(str(clean_extras))
         lines.append("```")
         lines.append("")
 

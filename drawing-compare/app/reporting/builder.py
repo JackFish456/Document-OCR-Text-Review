@@ -49,6 +49,12 @@ class ComparisonReportBuilder:
                 )
             if llm_out.rejected_due_to_grounding:
                 llm_extras["comparison_llm_summary_rejected_due_to_grounding"] = True
+            if llm_out.usage is not None:
+                usage_payload: dict[str, object] = {k: int(v) for k, v in llm_out.usage.items()}
+                if llm_out.estimated_cost_usd is not None:
+                    usage_payload["estimated_cost_usd"] = llm_out.estimated_cost_usd
+                usage_payload["model"] = self._llm_summarizer.model
+                llm_extras["comparison_llm_usage"] = usage_payload
             response = response.model_copy(update={"extras": llm_extras})
         if not include_text_reports:
             return response

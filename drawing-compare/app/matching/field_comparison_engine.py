@@ -13,6 +13,7 @@ from typing import Final
 
 from rapidfuzz import fuzz
 
+from app.matching.bipartite_assignment import optimal_assignment_max_weight
 from app.models.extraction import ExtractedField
 from app.models.match import ComparisonReport, MatchResult, MatchType
 
@@ -37,8 +38,11 @@ class FieldComparisonConfig:
     weight_token_overlap: float = 0.12
     weight_regex_compat: float = 0.08
 
-    # Alignment: minimum composite to accept a greedy pair (else leave unmatched).
+    # Alignment: minimum composite to allow an edge in global one-to-one assignment.
     min_pair_composite: float = 0.38
+
+    # When False, only source/target pairs on the same page_number are candidates.
+    allow_cross_page_match: bool = False
 
     # Classification — label/value gates (0..1).
     exact_label_similarity: float = 0.92
@@ -255,39 +259,47 @@ class FieldComparisonEngine:
     def config(self) -> FieldComparisonConfig:
         return self._cfg
 
-    def _best_target_for_source(
+    def _candidate_weight_matrix(
         self,
-        source: ExtractedField,
-        targets: list[ExtractedField],
-        used: set[str],
-    ) -> tuple[ExtractedField, PairScoreBreakdown] | None:
-        best: tuple[ExtractedField, PairScoreBreakdown] | None = None
-        for t in targets:
-            if t.field_id in used:
-                continue
-            bd = compute_pair_breakdown(source, t, self._cfg)
-            if best is None or bd.composite_score > best[1].composite_score:
-                best = (t, bd)
-        if best is None:
-            return None
-        if best[1].composite_score < self._cfg.min_pair_composite:
-            return None
-        return best
+        source_fields: list[ExtractedField],
+        target_fields: list[ExtractedField],
+    ) -> tuple[list[list[float | None]], list[list[PairScoreBreakdown | None]]]:
+        """Pairwise composite scores; ``None`` when the edge is not a candidate."""
+        n = len(source_fields)
+        m = len(target_fields)
+        weight: list[list[float | None]] = [[None] * m for _ in range(n)]
+        breakdown: list[list[PairScoreBreakdown | None]] = [[None] * m for _ in range(n)]
+        for i, src in enumerate(source_fields):
+            for j, tgt in enumerate(target_fields):
+                if (
+                    not self._cfg.allow_cross_page_match
+                    and src.page_number != tgt.page_number
+                ):
+                    continue
+                bd = compute_pair_breakdown(src, tgt, self._cfg)
+                if bd.composite_score < self._cfg.min_pair_composite:
+                    continue
+                weight[i][j] = bd.composite_score
+                breakdown[i][j] = bd
+        return weight, breakdown
 
     def align_and_score(
         self,
         source_fields: list[ExtractedField],
         target_fields: list[ExtractedField],
     ) -> list[tuple[ExtractedField, ExtractedField, PairScoreBreakdown]]:
-        used_target: set[str] = set()
+        if not source_fields or not target_fields:
+            return []
+        weight, breakdown = self._candidate_weight_matrix(source_fields, target_fields)
+        pairs_idx = optimal_assignment_max_weight(
+            len(source_fields), len(target_fields), weight
+        )
         out: list[tuple[ExtractedField, ExtractedField, PairScoreBreakdown]] = []
-        for src in source_fields:
-            hit = self._best_target_for_source(src, target_fields, used_target)
-            if hit is None:
+        for i, j in pairs_idx:
+            bd = breakdown[i][j]
+            if bd is None:
                 continue
-            tgt, bd = hit
-            used_target.add(tgt.field_id)
-            out.append((src, tgt, bd))
+            out.append((source_fields[i], target_fields[j], bd))
         return out
 
     def build_match_results(
@@ -337,7 +349,10 @@ class FieldComparisonEngine:
                         target_field=tgt,
                         match_type=MatchType.EXTRA_IN_TARGET,
                         confidence=1.0,
-                        reason="No source field aligned to this target row under greedy matching",
+                        reason=(
+                            "No source field aligned to this target row under global one-to-one "
+                            "assignment (same composite thresholds)"
+                        ),
                     )
                 )
 

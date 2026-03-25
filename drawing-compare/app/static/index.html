@@ -30,15 +30,17 @@
     <div class="actions">
       <button type="button" class="run-btn" id="runBtn" disabled>Run</button>
     </div>
+    <p class="hint" id="runHint">Choose primary and secondary files to enable Run.</p>
+    <p class="success" id="successMsg" hidden></p>
     <p class="error" id="errorMsg" hidden></p>
 
     <div class="outputs">
-      <a class="tile tile-output" id="wordTile" tabindex="-1" aria-disabled="true">
-        <span class="tile-label">Word</span>
+      <a class="tile tile-output" id="pdfTile" tabindex="-1" aria-disabled="true">
+        <span class="tile-label">Annotated comparison PDF</span>
         <span class="tile-hint" data-empty>Not available yet</span>
       </a>
-      <a class="tile tile-output" id="pdfTile" tabindex="-1" aria-disabled="true">
-        <span class="tile-label">Formatted PDF</span>
+      <a class="tile tile-output" id="wordTile" tabindex="-1" aria-disabled="true">
+        <span class="tile-label">Change summary (Word)</span>
         <span class="tile-hint" data-empty>Not available yet</span>
       </a>
     </div>

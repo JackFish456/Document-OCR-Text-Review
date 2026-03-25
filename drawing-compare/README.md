@@ -24,7 +24,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Run a saved compare (local files)
 
-If you want artifact files you can open after a run (JSON + Markdown):
+If you want the reviewer bundle after a run:
 
 ```bash
 cd drawing-compare
@@ -37,10 +37,17 @@ python scripts/run_manual_compare.py ^
 
 Outputs are written under `experiments/manual_runs/<run-id>/`:
 
-- `compare_response.json` (full API payload)
-- `comparison_report.json` (reader-friendly report JSON)
 - `comparison_report.md` (reader-friendly report markdown)
+- `visual_diff_overlay.pdf` (annotated reviewer overlay)
 - `run_summary.json` (small run metadata + counts)
+
+Add `--full-artifacts` to also write the legacy debug bundle:
+
+- `compare_response.json`
+- `comparison_report.json`
+- `visual_diff_manifest.json`
+- `visual_diff_report.html`
+- `visual_diff_overlay.png`
 
 ## PDF text-first diff report (embedded text)
 

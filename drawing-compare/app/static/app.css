@@ -173,6 +173,24 @@ body {
   outline-offset: 2px;
 }
 
+.hint {
+  text-align: center;
+  color: rgba(245, 245, 247, 0.55);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+}
+
+.success {
+  text-align: center;
+  color: #32d74b;
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+}
+
+.success[hidden] {
+  display: none !important;
+}
+
 .error {
   text-align: center;
   color: #ff453a;

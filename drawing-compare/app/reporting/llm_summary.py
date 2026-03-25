@@ -117,6 +117,42 @@ def _post_json(
     return parsed
 
 
+def completion_usage_tokens(completion: dict[str, object]) -> dict[str, int] | None:
+    """Parse OpenAI-style ``usage`` from a chat completions JSON object."""
+    raw = completion.get("usage")
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        v = raw.get(key)
+        if v is None:
+            continue
+        try:
+            out[key] = int(v)
+        except (TypeError, ValueError):
+            continue
+    return out or None
+
+
+def estimate_llm_cost_usd(
+    usage: dict[str, int] | None,
+    *,
+    input_usd_per_million: float | None,
+    output_usd_per_million: float | None,
+) -> float | None:
+    """Linear estimate from prompt + completion token counts; both prices must be set."""
+    if usage is None or input_usd_per_million is None or output_usd_per_million is None:
+        return None
+    pt = usage.get("prompt_tokens")
+    ct = usage.get("completion_tokens")
+    if pt is None or ct is None:
+        return None
+    raw = (pt / 1_000_000.0) * input_usd_per_million + (
+        ct / 1_000_000.0
+    ) * output_usd_per_million
+    return round(raw, 6)
+
+
 @dataclass(frozen=True)
 class LlmNarrativeSummaryOutcome:
     """Result of a single summarization attempt (never used for matching logic)."""
@@ -125,6 +161,10 @@ class LlmNarrativeSummaryOutcome:
     error: str | None
     grounding_violations: tuple[str, ...]
     rejected_due_to_grounding: bool
+    usage: dict[str, int] | None = None
+    """Token counts from the completions API ``usage`` object, when present."""
+    estimated_cost_usd: float | None = None
+    """Rough USD cost when both per-million prices are configured on the summarizer."""
 
 
 ChatCompletionPoster = Callable[
@@ -172,6 +212,11 @@ class ComparisonReportLlmSummarizer:
     ) -> None:
         self._config = config
         self._poster = poster or _default_poster
+
+    @property
+    def model(self) -> str:
+        """Chat completions model id from config (for usage logging)."""
+        return self._config.model
 
     def summarize(self, report: ComparisonReport) -> LlmNarrativeSummaryOutcome:
         if not self._config.enabled:
@@ -234,10 +279,24 @@ class ComparisonReportLlmSummarizer:
             logger.warning("LLM summary request failed: %s", e)
             return LlmNarrativeSummaryOutcome(None, f"LLM request failed: {e}", (), False)
 
+        usage = completion_usage_tokens(completion)
+        cost = estimate_llm_cost_usd(
+            usage,
+            input_usd_per_million=self._config.input_usd_per_million_tokens,
+            output_usd_per_million=self._config.output_usd_per_million_tokens,
+        )
+
         try:
             text = _parse_message_content(completion)
         except ValueError as e:
-            return LlmNarrativeSummaryOutcome(None, str(e), (), False)
+            return LlmNarrativeSummaryOutcome(
+                None,
+                str(e),
+                (),
+                False,
+                usage=usage,
+                estimated_cost_usd=cost,
+            )
 
         violations = validate_summary_grounding(text, canonical)
         if violations:
@@ -248,15 +307,26 @@ class ComparisonReportLlmSummarizer:
                     "LLM summary rejected: failed grounding checks",
                     tuple(violations),
                     True,
+                    usage=usage,
+                    estimated_cost_usd=cost,
                 )
             return LlmNarrativeSummaryOutcome(
                 text,
                 None,
                 tuple(violations),
                 False,
+                usage=usage,
+                estimated_cost_usd=cost,
             )
 
-        return LlmNarrativeSummaryOutcome(text, None, (), False)
+        return LlmNarrativeSummaryOutcome(
+            text,
+            None,
+            (),
+            False,
+            usage=usage,
+            estimated_cost_usd=cost,
+        )
 
 
 def summarizer_from_settings(

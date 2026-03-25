@@ -11,8 +11,9 @@ from app.core.logging import get_logger
 from app.matching.field_comparison_engine import FieldComparisonConfig, FieldComparisonEngine
 from app.models.comparison import CompareRequest, CompareResponse
 from app.models.diagnostics import PipelineDiagnostics
+from app.models.extraction import ExtractedField
 from app.models.match import MatchResult
-from app.models.ocr import OCRPage, OcrRegion
+from app.models.ocr import OCRDocument, OCRPage, OcrRegion
 from app.ocr.base import OcrProvider
 from app.ocr.document_provider import OCRProvider as DocumentOCRProvider
 from app.ocr.factory import get_document_ocr_provider, get_ocr_provider
@@ -36,6 +37,11 @@ def _uses_direct_pdf_document_ocr(settings: Settings, path: Path) -> bool:
         settings.ocr_provider.lower().strip() in _DIRECT_PDF_DOCUMENT_OCR_KEYS
         and is_pdf_path(path)
     )
+
+
+def _stamp_region_page(regions: list[OcrRegion], page_number: int) -> list[OcrRegion]:
+    """Ensure every region carries the preprocess page index (some OCR stubs omit it)."""
+    return [r.model_copy(update={"page_number": page_number}) for r in regions]
 
 
 def _regions_from_document_page(page: OCRPage) -> list[OcrRegion]:
@@ -145,8 +151,10 @@ def _document_regions_for_preprocessed_page(
     provider: DocumentOCRProvider,
     path: Path,
     preprocess_page: PreprocessPageResult,
+    *,
+    document: OCRDocument | None = None,
 ) -> list[OcrRegion]:
-    doc = provider.extract(str(path))
+    doc = document if document is not None else provider.extract(str(path))
     page = next((p for p in doc.pages if p.page_number == preprocess_page.page_number), None)
     if page is None:
         return []
@@ -227,6 +235,7 @@ class DrawingCompareService:
             ocr_provider=ocr_provider,
             preprocess_config=preprocess_config,
             job_metadata=job_metadata,
+            include_text_reports=True,
         )
         return response
 
@@ -238,6 +247,7 @@ class DrawingCompareService:
         ocr_provider: str | None = None,
         preprocess_config: PreprocessConfig | None = None,
         job_metadata: dict[str, Any] | None = None,
+        include_text_reports: bool = True,
     ) -> tuple[CompareResponse, CompareArtifacts]:
         """Run compare and retain page rasters plus raw match rows for local renderers."""
         eff = self._effective_settings(
@@ -271,7 +281,7 @@ class DrawingCompareService:
             artifacts.results,
             total_source=artifacts.total_source,
             extras=extras,
-            include_text_reports=True,
+            include_text_reports=include_text_reports,
         )
         return response, artifacts
 
@@ -291,6 +301,7 @@ class DrawingCompareService:
             ocr_provider=ocr_provider,
             preprocess_config=preprocess_config,
             job_metadata=job_metadata,
+            include_text_reports=True,
         )
         diagnostics = PipelineDiagnostics(
             source_fields=artifacts.source_fields,
@@ -329,14 +340,18 @@ class DrawingCompareService:
         preprocessor = DrawingPreprocessPipeline(settings)
         pages_a = preprocessor.process_path(path_a)
         pages_b = preprocessor.process_path(path_b)
-        if len(pages_a) > 1:
-            logger.warning("Drawing A has %s pages; using page 1 only for compare", len(pages_a))
-        if len(pages_b) > 1:
-            logger.warning("Drawing B has %s pages; using page 1 only for compare", len(pages_b))
-        pa = pages_a[0]
-        pb = pages_b[0]
+        n_pairs = max(len(pages_a), len(pages_b))
+        if len(pages_a) != len(pages_b):
+            logger.info(
+                "page count mismatch: source=%s target=%s; aligning by index (N↔N), "
+                "extra pages reported as missing/extra fields",
+                len(pages_a),
+                len(pages_b),
+            )
+
         ndarray_ocr: OcrProvider | None = None
         document_ocr: DocumentOCRProvider | None = None
+        pdf_doc_cache: dict[str, OCRDocument] = {}
 
         def _get_ndarray_ocr() -> OcrProvider:
             nonlocal ndarray_ocr
@@ -353,6 +368,12 @@ class DrawingCompareService:
                 document_ocr = get_document_ocr_provider(bridge_settings)
             return document_ocr
 
+        def _cached_pdf_document(path: Path) -> OCRDocument:
+            key = str(path.resolve())
+            if key not in pdf_doc_cache:
+                pdf_doc_cache[key] = _get_document_ocr().extract(str(path))
+            return pdf_doc_cache[key]
+
         def _ocr_regions(path: Path, page: PreprocessPageResult) -> list[OcrRegion]:
             if _uses_direct_pdf_document_ocr(settings, path):
                 provider = _get_document_ocr()
@@ -362,13 +383,30 @@ class DrawingCompareService:
                     provider.provider_name,
                     page.page_number,
                 )
-                return _document_regions_for_preprocessed_page(provider, path, page)
+                return _document_regions_for_preprocessed_page(
+                    provider,
+                    path,
+                    page,
+                    document=_cached_pdf_document(path),
+                )
             return run_ocr_on_preprocessed_page(_get_ndarray_ocr(), page)
 
-        regions_a = _ocr_regions(path_a, pa)
-        regions_b = _ocr_regions(path_b, pb)
-        fields_a = self._parser.parse(regions_a).fields
-        fields_b = self._parser.parse(regions_b).fields
+        fields_a: list[ExtractedField] = []
+        fields_b: list[ExtractedField] = []
+        for i in range(n_pairs):
+            if i < len(pages_a):
+                regions_a = _stamp_region_page(
+                    _ocr_regions(path_a, pages_a[i]),
+                    pages_a[i].page_number,
+                )
+                fields_a.extend(self._parser.parse(regions_a).fields)
+            if i < len(pages_b):
+                regions_b = _stamp_region_page(
+                    _ocr_regions(path_b, pages_b[i]),
+                    pages_b[i].page_number,
+                )
+                fields_b.extend(self._parser.parse(regions_b).fields)
+
         engine_cfg = FieldComparisonConfig.from_settings_like(
             fuzzy_match_threshold=settings.fuzzy_match_threshold,
             fuzzy_changed_threshold=settings.fuzzy_changed_threshold,
@@ -377,8 +415,8 @@ class DrawingCompareService:
         engine = FieldComparisonEngine(engine_cfg)
         results = engine.build_match_results(fields_a, fields_b)
         return CompareArtifacts(
-            source_page=pa,
-            target_page=pb,
+            source_pages=list(pages_a),
+            target_pages=list(pages_b),
             results=results,
             source_fields=fields_a,
             target_fields=fields_b,

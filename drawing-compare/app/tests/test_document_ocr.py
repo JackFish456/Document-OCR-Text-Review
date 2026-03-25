@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from uuid import uuid4
 
 import cv2
 import fitz
@@ -25,23 +23,11 @@ from app.reporting.builder import ComparisonReportBuilder
 from app.rules.review import ReviewRulesEngine
 from app.services.compare import DrawingCompareService
 
-_TEST_TMP_ROOT = Path(__file__).resolve().parents[2] / "data" / "tmp" / "test_document_ocr"
-
 
 @pytest.fixture
-def scratch_dir() -> Path:
-    path = _TEST_TMP_ROOT / uuid4().hex
-    path.mkdir(parents=True, exist_ok=False)
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path, ignore_errors=True)
-
-
-@pytest.fixture
-def tiny_png(scratch_dir: Path) -> Path:
+def tiny_png(tmp_path: Path) -> Path:
     img = np.full((32, 48, 3), 255, dtype=np.uint8)
-    path = scratch_dir / "white.png"
+    path = tmp_path / "white.png"
     cv2.imwrite(str(path), img)
     return path
 
@@ -125,8 +111,8 @@ def test_factory_windows_ocr_and_alias() -> None:
     assert b.provider_name == "windows_ocr"
 
 
-def test_windows_ocr_pdf_embedded_text_geometry(scratch_dir: Path) -> None:
-    pdf_path = scratch_dir / "embedded.pdf"
+def test_windows_ocr_pdf_embedded_text_geometry(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "embedded.pdf"
     doc = fitz.open()
     page = doc.new_page(width=320, height=200)
     page.insert_text((48, 96), "Line one for OCR test", fontsize=12)
@@ -186,9 +172,9 @@ def test_windows_ocr_raster_raises_when_winrt_missing(tiny_png: Path) -> None:
             prov.extract(str(tiny_png))
 
 
-def test_compare_service_windows_ocr_uses_direct_pdf_document_path(scratch_dir: Path) -> None:
-    source_pdf = scratch_dir / "source.pdf"
-    target_pdf = scratch_dir / "target.pdf"
+def test_compare_service_windows_ocr_uses_direct_pdf_document_path(tmp_path: Path) -> None:
+    source_pdf = tmp_path / "source.pdf"
+    target_pdf = tmp_path / "target.pdf"
     _write_pdf(source_pdf, text="Source")
     _write_pdf(target_pdf, text="Target")
 
@@ -236,3 +222,76 @@ def test_compare_service_windows_ocr_uses_direct_pdf_document_path(scratch_dir: 
     assert source_field.value == "ALPHA"
     assert source_field.bbox.x1 == pytest.approx(artifacts.source_page.width * 0.25, rel=0.05)
     assert source_field.bbox.x2 == pytest.approx(artifacts.source_page.width * 0.75, rel=0.05)
+
+
+def test_compare_service_windows_ocr_multipage_pdf_caches_one_document_per_path(tmp_path: Path) -> None:
+    """Direct-PDF OCR reuses one OCRDocument per file; each page maps to the correct page_number."""
+    source_pdf = tmp_path / "source_2p.pdf"
+    target_pdf = tmp_path / "target_2p.pdf"
+    for path in (source_pdf, target_pdf):
+        doc = fitz.open()
+        for _ in range(2):
+            page = doc.new_page(width=200, height=100)
+            page.insert_text((24.0, 50.0), "x", fontsize=12)
+        doc.save(str(path))
+        doc.close()
+
+    template = OCRDocument(
+        document_id="doc",
+        provider_name="windows_ocr",
+        pages=[
+            OCRPage(
+                page_number=1,
+                width=200.0,
+                height=100.0,
+                lines=[
+                    OCRLine(
+                        id="p1-l0",
+                        text="ALPHA",
+                        confidence=0.99,
+                        bbox=BoundingBox.from_xywh(50.0, 20.0, 100.0, 20.0),
+                    )
+                ],
+            ),
+            OCRPage(
+                page_number=2,
+                width=200.0,
+                height=100.0,
+                lines=[
+                    OCRLine(
+                        id="p2-l0",
+                        text="BETA",
+                        confidence=0.99,
+                        bbox=BoundingBox.from_xywh(50.0, 20.0, 100.0, 20.0),
+                    )
+                ],
+            ),
+        ],
+    )
+    provider = _PdfOnlyWindowsProvider(template)
+    settings = Settings(
+        ocr_provider="windows_ocr",
+        preprocess=PreprocessConfig(enable_deskew=False),
+    )
+    svc = _build_compare_service(settings)
+
+    with patch("app.services.compare.get_document_ocr_provider", return_value=provider):
+        with patch(
+            "app.services.compare.get_ocr_provider",
+            side_effect=AssertionError("raster OCR path should not be used for windows_ocr PDFs"),
+        ):
+            _response, artifacts = svc.compare_paths_with_artifacts(
+                source_pdf,
+                target_pdf,
+                ocr_provider="windows_ocr",
+            )
+
+    assert len(provider.calls) == 2
+    assert {str(p.resolve()) for p in provider.calls} == {
+        str(source_pdf.resolve()),
+        str(target_pdf.resolve()),
+    }
+    assert len(artifacts.source_fields) == 2
+    by_page = {f.page_number: f.value for f in artifacts.source_fields}
+    assert by_page[1] == "ALPHA"
+    assert by_page[2] == "BETA"

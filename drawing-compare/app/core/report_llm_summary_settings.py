@@ -35,3 +35,17 @@ class ReportLlmSummaryConfig(BaseModel):
         default=True,
         description="If true, omit narrative when grounding checks fail.",
     )
+    input_usd_per_million_tokens: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "USD per 1M prompt tokens for cost estimates (e.g. provider list price). "
+            "Set together with output_usd_per_million_tokens to populate "
+            "extras.comparison_llm_usage.estimated_cost_usd."
+        ),
+    )
+    output_usd_per_million_tokens: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="USD per 1M completion tokens for cost estimates.",
+    )
