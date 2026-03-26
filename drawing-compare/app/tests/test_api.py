@@ -102,6 +102,7 @@ def test_compare_multipart_pipeline() -> None:
     assert body["extras"]["output_visual_href"].startswith("/compare/artifacts/")
     assert body["extras"]["output_pdf_href"] == body["extras"]["output_visual_href"]
     assert body["extras"]["output_word_href"].endswith("comparison_summary.docx")
+    assert body["extras"]["output_llm_usage_href"].endswith("comparison_llm_usage.json")
     assert "output_html_href" not in body["extras"]
     assert "output_manifest_href" not in body["extras"]
 
@@ -144,6 +145,13 @@ def test_compare_multipart_artifact_pdf_download(
         assert wdl.content[:2] == b"PK"
         ct = wdl.headers.get("content-type", "")
         assert "wordprocessingml" in ct or "octet-stream" in ct
+        usage_href = body["extras"]["output_llm_usage_href"]
+        assert usage_href.endswith("comparison_llm_usage.json")
+        udl = client.get(usage_href)
+        assert udl.status_code == 200
+        assert "application/json" in udl.headers.get("content-type", "")
+        usage_json = udl.json()
+        assert isinstance(usage_json, dict)
     finally:
         reset_settings_cache()
 
@@ -176,6 +184,7 @@ def test_compare_paths_local_files_return_reviewer_outputs(
         assert extras["output_visual_kind"] == "pdf"
         assert extras["output_visual_href"].endswith("visual_diff_overlay.pdf")
         assert extras["output_word_href"].endswith("comparison_summary.docx")
+        assert extras["output_llm_usage_href"].endswith("comparison_llm_usage.json")
     finally:
         reset_settings_cache()
 

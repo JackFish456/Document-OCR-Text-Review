@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.compare_job_store import (
+    LLM_USAGE_FILENAME,
     artifact_file_path,
     media_type_for_filename,
     persist_reviewer_artifacts,
@@ -46,9 +47,11 @@ def _attach_reviewer_outputs(
 ) -> CompareResponse:
     bundle = build_reviewer_bundle(response, compare_artifacts)
     job_id = uuid4().hex
-    persist_reviewer_artifacts(job_id, bundle)
+    llm_usage = response.extras.get("comparison_llm_usage")
+    persist_reviewer_artifacts(job_id, bundle, llm_usage=llm_usage if isinstance(llm_usage, dict) else None)
     merged = dict(response.extras)
     merged.update(reviewer_output_extras(job_id, bundle))
+    merged["output_llm_usage_href"] = f"/compare/artifacts/{job_id}/{LLM_USAGE_FILENAME}"
     return response.model_copy(update={"extras": merged})
 
 
@@ -177,6 +180,13 @@ async def compare_uploaded_drawings(
     ] = None,
     svc: DrawingCompareService = Depends(get_compare_service),  # noqa: B008
 ) -> CompareResponse:
+    # region agent log
+    logger.info(
+        "compare upload request ocr_provider_form=%s include_text_reports_form=%s",
+        ocr_provider,
+        include_text_reports,
+    )
+    # endregion
     preprocess_merged = _parse_preprocess_form(svc, preprocess_config)
     meta = _parse_job_metadata(job_metadata)
     include_txt = _parse_include_text_reports_form(include_text_reports)

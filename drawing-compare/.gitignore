@@ -21,3 +21,5 @@ experiments/eval_runs/*
 !experiments/eval_runs/.gitkeep
 experiments/provider_benchmarks/*
 !experiments/provider_benchmarks/.gitkeep
+data/tmp/
+.tmp/

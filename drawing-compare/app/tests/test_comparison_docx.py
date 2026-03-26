@@ -34,12 +34,7 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
         extra_target=[],
         uncertain=[],
     )
-    response = CompareResponse(
-        comparison_id=uuid4(),
-        report=report,
-        review_flags=[],
-        extras={"comparison_llm_narrative_summary": "Executive line one."},
-    )
+    response = CompareResponse(comparison_id=uuid4(), report=report, review_flags=[], extras={})
     ann = VisualAnnotation(
         annotation_id="ann-001",
         index=1,
@@ -63,8 +58,17 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
     assert raw[:2] == b"PK"
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         doc_xml = zf.read("word/document.xml").decode("utf-8")
-    assert "Executive line one." in doc_xml
     assert "OLD" in doc_xml and "NEW" in doc_xml
+    assert "Comparison ID:" not in doc_xml
+    assert "Review flags" not in doc_xml
+    assert "<w:t>Notes</w:t>" not in doc_xml
+    assert "Executive summary" not in doc_xml
+    assert "Overview" not in doc_xml
+    assert doc_xml.index("Drawing comparison summary") < doc_xml.index(
+        "Detailed findings (matches PDF index numbers)"
+    )
+    assert "<w:t>Confidence</w:t>" in doc_xml
+    assert "<w:t>Match type</w:t>" in doc_xml
 
 
 def test_build_comparison_docx_no_annotations() -> None:

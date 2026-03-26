@@ -186,14 +186,14 @@ def test_visual_manifest_filters_and_normalizes_non_exact_rows() -> None:
     assert changed.source_bbox_normalized is not None
     assert changed.target_bbox_normalized is not None
     assert changed.source_bbox_normalized.x1 == 0.1
-    assert changed.overlay_bbox_normalized.x1 == 0.25
+    assert changed.overlay_bbox_normalized.x1 == 0.07
     missing = manifest.annotations[1]
-    assert missing.overlay_bbox_normalized.x1 == 0.2
+    assert missing.overlay_bbox_normalized.x1 == 0.17
     extra = manifest.annotations[2]
-    assert extra.overlay_bbox_normalized.x1 == 0.55
+    assert extra.overlay_bbox_normalized.x1 == 0.535
 
 
-def test_render_visual_diff_maps_target_overlay_into_source_space() -> None:
+def test_render_visual_diff_anchors_changed_overlay_to_source_box() -> None:
     source = np.zeros((100, 100, 3), dtype=np.uint8)
     target = np.zeros((50, 200, 3), dtype=np.uint8)
     target[10:20, 100:150] = (255, 255, 255)
@@ -211,7 +211,8 @@ def test_render_visual_diff_maps_target_overlay_into_source_space() -> None:
 
     rendered = render_visual_diff_overlay(manifest, source_image=source, target_image=target)
 
-    assert rendered[30, 60].sum() > 0
+    assert rendered[14, 14].sum() > 0
+    assert rendered[30, 60].sum() == 0
     assert rendered[5, 5].sum() == 0
 
 
@@ -393,6 +394,46 @@ def test_plan_badge_placements_avoids_overlap_for_nearby_boxes() -> None:
     )
 
 
+def test_plan_badges_prefer_not_covering_highlight_boxes() -> None:
+    source = np.zeros((120, 120, 3), dtype=np.uint8)
+    results = [
+        MatchResult(
+            source_field=_field("s1", "one", _bbox(15, 50, 35, 70)),
+            target_field=None,
+            match_type=MatchType.MISSING_IN_TARGET,
+            confidence=1.0,
+        ),
+        MatchResult(
+            source_field=_field("s2", "two", _bbox(37, 50, 57, 70)),
+            target_field=None,
+            match_type=MatchType.MISSING_IN_TARGET,
+            confidence=1.0,
+        ),
+    ]
+    artifacts = _compare_artifacts(results=results, source_image=source, target_image=source)
+    manifest = build_visual_diff_manifest(_response(results), artifacts)
+    placements = plan_badge_placements(manifest)
+    highlight_rects = [
+        (
+            int(round(ann.overlay_bbox_normalized.x1 * 120)),
+            int(round(ann.overlay_bbox_normalized.y1 * 120)),
+            int(round(ann.overlay_bbox_normalized.x2 * 120)),
+            int(round(ann.overlay_bbox_normalized.y2 * 120)),
+        )
+        for ann in manifest.annotations
+    ]
+
+    for p in placements:
+        badge = (p.x1, p.y1, p.x2, p.y2)
+        assert all(
+            badge[2] <= rect[0]
+            or rect[2] <= badge[0]
+            or badge[3] <= rect[1]
+            or rect[3] <= badge[1]
+            for rect in highlight_rects
+        )
+
+
 def test_plan_badge_placements_falls_back_inside_for_edge_box() -> None:
     source = np.zeros((20, 20, 3), dtype=np.uint8)
     src = _field("s1", "edge", _bbox(0, 0, 4, 4))
@@ -439,12 +480,14 @@ def test_run_manual_compare_writes_minimal_reviewer_bundle() -> None:
         assert outputs["visual_manifest"] is None
         assert outputs["visual_overlay_png"] is None
         assert outputs["visual_report"] is None
+        assert Path(outputs["llm_usage_json"]).is_file()
         assert Path(outputs["visual_overlay"]).is_file()
         assert Path(outputs["comparison_docx"]).is_file()
         assert Path(outputs["summary_json"]).is_file()
 
         out_dir = Path(outputs["out_dir"])
         assert {path.name for path in out_dir.iterdir() if path.is_file()} == {
+            "comparison_llm_usage.json",
             "comparison_summary.docx",
             "visual_diff_overlay.pdf",
             "run_summary.json",
@@ -455,9 +498,11 @@ def test_run_manual_compare_writes_minimal_reviewer_bundle() -> None:
             "visual_overlay": "visual_diff_overlay.pdf",
             "visual_overlay_kind": "pdf",
             "comparison_summary_docx": "comparison_summary.docx",
+            "comparison_llm_usage_json": "comparison_llm_usage.json",
             "summary_json": "run_summary.json",
         }
         assert summary["visual_overlay_kind"] == "pdf"
+        assert isinstance(summary["comparison_llm_usage"], dict)
         assert summary["debug_artifacts"] is None
         assert Path(outputs["visual_overlay"]).read_bytes().startswith(b"%PDF-")
     finally:
@@ -505,6 +550,7 @@ def test_run_manual_compare_full_artifacts_writes_debug_bundle() -> None:
             "compare_response.json",
             "comparison_report.json",
             "comparison_report.md",
+            "comparison_llm_usage.json",
             "comparison_summary.docx",
             "run_summary.json",
             "visual_diff_manifest.json",

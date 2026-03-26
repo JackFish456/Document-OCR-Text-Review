@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
 
     # OCR provider selection (see factory for aliases: paddle, windows, etc.)
-    ocr_provider: str = "stub"
+    ocr_provider: str = "windows_ocr"
 
     # File-path OCR (:class:`app.ocr.document_provider.OCRProvider`)
     document_ocr_provider: str = "stub_document"

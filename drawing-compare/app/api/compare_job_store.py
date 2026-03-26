@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -22,12 +24,14 @@ logger = get_logger(__name__)
 _JOB_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 # Filenames aligned with scripts/run_manual_compare.py
+LLM_USAGE_FILENAME = "comparison_llm_usage.json"
 ARTIFACT_FILENAMES = frozenset(
     {
         PDF_VISUAL_FILENAME,
         PNG_VISUAL_FILENAME,
         "visual_diff_report.html",
         "visual_diff_manifest.json",
+        LLM_USAGE_FILENAME,
         WORD_OUTPUT_FILENAME,
     },
 )
@@ -87,6 +91,7 @@ def persist_reviewer_artifacts(
     bundle: ReviewerBundle,
     *,
     include_debug_artifacts: bool = False,
+    llm_usage: dict[str, Any] | None = None,
 ) -> None:
     """Write reviewer-facing artifacts, with optional internal debug files."""
     if not is_valid_job_id(job_id):
@@ -96,6 +101,8 @@ def persist_reviewer_artifacts(
     base.mkdir(parents=True, exist_ok=False)
     (base / bundle.visual_filename).write_bytes(bundle.visual_bytes)
     (base / WORD_OUTPUT_FILENAME).write_bytes(bundle.comparison_docx)
+    payload = llm_usage if isinstance(llm_usage, dict) else {}
+    (base / LLM_USAGE_FILENAME).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     if include_debug_artifacts:
         if bundle.visual_kind != "png":
             (base / PNG_VISUAL_FILENAME).write_bytes(image_to_png_bytes(bundle.overlay_bgr))

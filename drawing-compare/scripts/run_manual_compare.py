@@ -84,10 +84,14 @@ def run_manual_compare(
     comparison_docx_path = out_dir / "comparison_summary.docx"
     visual_overlay_png_path = out_dir / "visual_diff_overlay.png"
     visual_report_path = out_dir / "visual_diff_report.html"
+    llm_usage_path = out_dir / "comparison_llm_usage.json"
     summary_path = out_dir / "run_summary.json"
 
     visual_overlay_path.write_bytes(bundle.visual_bytes)
     comparison_docx_path.write_bytes(bundle.comparison_docx)
+    llm_usage = resp.extras.get("comparison_llm_usage")
+    llm_usage_payload = llm_usage if isinstance(llm_usage, dict) else {}
+    llm_usage_path.write_text(json.dumps(llm_usage_payload, indent=2), encoding="utf-8")
 
     debug_artifacts: dict[str, str] = {}
     if full_artifacts:
@@ -121,6 +125,7 @@ def run_manual_compare(
         "visual_overlay": visual_overlay_path.name,
         "visual_overlay_kind": bundle.visual_kind,
         "comparison_summary_docx": comparison_docx_path.name,
+        "comparison_llm_usage_json": llm_usage_path.name,
         "summary_json": summary_path.name,
     }
     summary_path.write_text(
@@ -136,6 +141,7 @@ def run_manual_compare(
                 "visual_overlay_kind": bundle.visual_kind,
                 "full_artifacts": full_artifacts,
                 "primary_reviewer_artifacts": primary_artifacts,
+                "comparison_llm_usage": llm_usage_payload,
                 "debug_artifacts": debug_artifacts or None,
             },
             indent=2,
@@ -150,6 +156,7 @@ def run_manual_compare(
         "report_json": report_json_path.resolve() if full_artifacts else None,
         "report_md": report_md_path.resolve() if full_artifacts else None,
         "comparison_docx": comparison_docx_path.resolve(),
+        "llm_usage_json": llm_usage_path.resolve(),
         "visual_manifest": visual_manifest_path.resolve() if full_artifacts else None,
         "visual_overlay": visual_overlay_path.resolve(),
         "visual_overlay_png": visual_overlay_png_path.resolve() if full_artifacts else None,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,28 @@ from app.services.compare_artifacts import CompareArtifacts
 logger = get_logger(__name__)
 _DIRECT_PDF_DOCUMENT_OCR_KEYS = frozenset({"windows", "windows_ocr"})
 _MIN_BBOX_EXTENT = 1e-3
+
+
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, object]) -> None:
+    # region agent log
+    payload = {
+        "sessionId": "2f2721",
+        "runId": "initial",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with Path("C:/Users/Jack.Fisher/OneDrive - Kiewit Corporation/Desktop/Document OCR Text Review/debug-2f2721.log").open(
+            "a",
+            encoding="utf-8",
+        ) as fp:
+            fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # endregion
 
 
 def _uses_direct_pdf_document_ocr(settings: Settings, path: Path) -> bool:
@@ -260,6 +284,18 @@ class DrawingCompareService:
             target,
             eff.ocr_provider,
         )
+        # region agent log
+        _debug_log(
+            "H5",
+            "app/services/compare.py:compare_paths_with_artifacts:start",
+            "Starting compare pipeline",
+            {
+                "source": str(source),
+                "target": str(target),
+                "ocr_provider": eff.ocr_provider,
+            },
+        )
+        # endregion
         try:
             artifacts = self._run_pipeline(source, target, settings=eff)
         except Exception:
@@ -270,6 +306,18 @@ class DrawingCompareService:
             len(artifacts.results),
             artifacts.total_source,
         )
+        # region agent log
+        _debug_log(
+            "H8",
+            "app/services/compare.py:compare_paths_with_artifacts:end",
+            "Pipeline completed",
+            {
+                "result_rows": len(artifacts.results),
+                "source_fields": len(artifacts.source_fields),
+                "target_fields": len(artifacts.target_fields),
+            },
+        )
+        # endregion
         extras: dict[str, Any] = {
             "mode": "full",
             "source_path": str(source.resolve()),
@@ -315,14 +363,43 @@ class DrawingCompareService:
         ocr_provider: str | None,
         preprocess_config: PreprocessConfig | None,
     ) -> Settings:
+        # region agent log
+        _debug_log(
+            "H9",
+            "app/services/compare.py:_effective_settings:input",
+            "Resolving effective settings",
+            {
+                "requested_ocr_provider": ocr_provider,
+                "base_settings_ocr_provider": self._settings.ocr_provider,
+                "has_preprocess_override": preprocess_config is not None,
+            },
+        )
+        # endregion
         if not (ocr_provider and ocr_provider.strip()) and preprocess_config is None:
+            # region agent log
+            _debug_log(
+                "H9",
+                "app/services/compare.py:_effective_settings:result",
+                "Using base settings",
+                {"effective_ocr_provider": self._settings.ocr_provider},
+            )
+            # endregion
             return self._settings
         updates: dict[str, Any] = {}
         if ocr_provider and ocr_provider.strip():
             updates["ocr_provider"] = ocr_provider.strip().lower()
         if preprocess_config is not None:
             updates["preprocess"] = preprocess_config
-        return self._settings.model_copy(update=updates)
+        resolved = self._settings.model_copy(update=updates)
+        # region agent log
+        _debug_log(
+            "H9",
+            "app/services/compare.py:_effective_settings:result",
+            "Using merged settings",
+            {"effective_ocr_provider": resolved.ocr_provider},
+        )
+        # endregion
+        return resolved
 
     def _resolve_local_path(self, ref: str | None) -> Path | None:
         if not ref:
@@ -340,6 +417,17 @@ class DrawingCompareService:
         preprocessor = DrawingPreprocessPipeline(settings)
         pages_a = preprocessor.process_path(path_a)
         pages_b = preprocessor.process_path(path_b)
+        # region agent log
+        _debug_log(
+            "H6",
+            "app/services/compare.py:_run_pipeline:preprocess",
+            "Preprocessing completed",
+            {
+                "source_pages": len(pages_a),
+                "target_pages": len(pages_b),
+            },
+        )
+        # endregion
         n_pairs = max(len(pages_a), len(pages_b))
         if len(pages_a) != len(pages_b):
             logger.info(
@@ -399,13 +487,41 @@ class DrawingCompareService:
                     _ocr_regions(path_a, pages_a[i]),
                     pages_a[i].page_number,
                 )
-                fields_a.extend(self._parser.parse(regions_a).fields)
+                parsed_a = self._parser.parse(regions_a).fields
+                fields_a.extend(parsed_a)
+                # region agent log
+                _debug_log(
+                    "H6",
+                    "app/services/compare.py:_run_pipeline:source_page",
+                    "Source OCR and parse counts",
+                    {
+                        "pair_index": i,
+                        "page_number": pages_a[i].page_number,
+                        "ocr_regions": len(regions_a),
+                        "parsed_fields": len(parsed_a),
+                    },
+                )
+                # endregion
             if i < len(pages_b):
                 regions_b = _stamp_region_page(
                     _ocr_regions(path_b, pages_b[i]),
                     pages_b[i].page_number,
                 )
-                fields_b.extend(self._parser.parse(regions_b).fields)
+                parsed_b = self._parser.parse(regions_b).fields
+                fields_b.extend(parsed_b)
+                # region agent log
+                _debug_log(
+                    "H6",
+                    "app/services/compare.py:_run_pipeline:target_page",
+                    "Target OCR and parse counts",
+                    {
+                        "pair_index": i,
+                        "page_number": pages_b[i].page_number,
+                        "ocr_regions": len(regions_b),
+                        "parsed_fields": len(parsed_b),
+                    },
+                )
+                # endregion
 
         engine_cfg = FieldComparisonConfig.from_settings_like(
             fuzzy_match_threshold=settings.fuzzy_match_threshold,
@@ -414,6 +530,18 @@ class DrawingCompareService:
         )
         engine = FieldComparisonEngine(engine_cfg)
         results = engine.build_match_results(fields_a, fields_b)
+        # region agent log
+        _debug_log(
+            "H7",
+            "app/services/compare.py:_run_pipeline:matching",
+            "Matching output counts",
+            {
+                "source_fields_total": len(fields_a),
+                "target_fields_total": len(fields_b),
+                "results_total": len(results),
+            },
+        )
+        # endregion
         return CompareArtifacts(
             source_pages=list(pages_a),
             target_pages=list(pages_b),

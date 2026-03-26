@@ -7,6 +7,7 @@ import base64
 import html
 import json
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,8 @@ _TARGET_CROP_MATCH_TYPES = frozenset(
         MatchType.UNCERTAIN,
     }
 )
+_OVERLAY_PAD_PIXELS = 3
+_OVERLAY_PAD_RATIO = 0.0025
 
 
 class NormalizedBoundingBox(BaseModel):
@@ -228,6 +231,28 @@ _STYLE_BY_MATCH_TYPE: dict[MatchType, _VisualStyle] = {
 }
 
 
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, object]) -> None:
+    # region agent log
+    payload = {
+        "sessionId": "2f2721",
+        "runId": "initial",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with Path("C:/Users/Jack.Fisher/OneDrive - Kiewit Corporation/Desktop/Document OCR Text Review/debug-2f2721.log").open(
+            "a",
+            encoding="utf-8",
+        ) as fp:
+            fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # endregion
+
+
 def _belongs_to_pair_slice(
     result: MatchResult,
     *,
@@ -292,6 +317,19 @@ def build_visual_diff_manifest(
     """Convert non-exact `MatchResult` rows into a stable visual manifest."""
     src_pages = compare_artifacts.source_pages
     tgt_pages = compare_artifacts.target_pages
+    # region agent log
+    _debug_log(
+        "H1",
+        "app/reporting/visual_diff.py:build_visual_diff_manifest:start",
+        "Starting manifest build",
+        {
+            "total_results": len(compare_artifacts.results),
+            "visible_candidates": len(_iter_visual_results(compare_artifacts.results)),
+            "source_pages": len(src_pages),
+            "target_pages": len(tgt_pages),
+        },
+    )
+    # endregion
     if not src_pages or not tgt_pages:
         raise ValueError("CompareArtifacts requires at least one source and one target page")
 
@@ -303,6 +341,22 @@ def build_visual_diff_manifest(
     for result in _iter_visual_results(compare_artifacts.results):
         pair_index = _pair_index_for_result(result, src_pages=src_pages, tgt_pages=tgt_pages)
         if pair_index < 0:
+            # region agent log
+            _debug_log(
+                "H2",
+                "app/reporting/visual_diff.py:build_visual_diff_manifest:pair_index",
+                "Visible result dropped due to missing pair index",
+                {
+                    "match_type": result.match_type.value,
+                    "source_page": (
+                        result.source_field.page_number if result.source_field is not None else None
+                    ),
+                    "target_page": (
+                        result.target_field.page_number if result.target_field is not None else None
+                    ),
+                },
+            )
+            # endregion
             continue
         sp = src_pages[pair_index] if pair_index < len(src_pages) else None
         tp = tgt_pages[pair_index] if pair_index < len(tgt_pages) else None
@@ -342,6 +396,18 @@ def build_visual_diff_manifest(
                 annotations=slice_ann[pair_index],
             )
         )
+    # region agent log
+    _debug_log(
+        "H3",
+        "app/reporting/visual_diff.py:build_visual_diff_manifest:end",
+        "Completed manifest build",
+        {
+            "annotation_count": len(flat),
+            "page_count": len(pages),
+            "page_annotation_counts": [len(sl.annotations) for sl in pages],
+        },
+    )
+    # endregion
 
     p0 = pages[0]
     return VisualDiffManifest(
@@ -369,6 +435,10 @@ def plan_badge_placements_for_canvas(
     """Badge layout for one canvas of size ``width`` x ``height``."""
     gap = _badge_gap(width, height)
     placements: list[BadgePlacement] = []
+    highlight_boxes = [
+        _normalized_box_to_pixels(annotation.overlay_bbox_normalized, width=width, height=height)
+        for annotation in annotations
+    ]
     occupied: list[tuple[int, int, int, int]] = []
     for annotation in annotations:
         box = _normalized_box_to_pixels(
@@ -387,6 +457,7 @@ def plan_badge_placements_for_canvas(
             page_width=width,
             page_height=height,
             occupied=occupied,
+            avoid_rects=highlight_boxes,
         )
         occupied.append((placement.x1, placement.y1, placement.x2, placement.y2))
         placements.append(placement)
@@ -1074,6 +1145,17 @@ def build_visual_diff_html_pages(
     compare_artifacts: CompareArtifacts,
 ) -> str:
     """HTML report: single-page uses legacy template; multi-page adds one canvas per aligned pair."""
+    # region agent log
+    _debug_log(
+        "H4",
+        "app/reporting/visual_diff.py:build_visual_diff_html_pages",
+        "Preparing HTML visual diff",
+        {
+            "manifest_annotations": len(manifest.annotations),
+            "manifest_pages": len(manifest.pages),
+        },
+    )
+    # endregion
     if len(manifest.pages) <= 1:
         sp = compare_artifacts.source_pages[0]
         tp = compare_artifacts.target_pages[0]
@@ -1120,6 +1202,19 @@ def _build_visual_diff_html_multipage(
             f'<div class="note">Canvas {cw} × {ch} px</div>'
             f'<div class="viewer"><canvas id="diffCanvas-{idx}" width="{cw}" height="{ch}"></canvas></div></section>'
         )
+    # region agent log
+    _debug_log(
+        "H4",
+        "app/reporting/visual_diff.py:_build_visual_diff_html_multipage",
+        "Built multipage HTML payload",
+        {
+            "manifest_pages": len(manifest.pages),
+            "payload_pages": len(page_payloads),
+            "manifest_annotations": len(manifest.annotations),
+            "payload_annotations": sum(len(p["annotations"]) for p in page_payloads),
+        },
+    )
+    # endregion
 
     payload: dict[str, object] = {
         "schema_version": "2.0",
@@ -1299,6 +1394,19 @@ def _build_annotation(
         if tgt is not None
         else None
     )
+    overlay_box = _overlay_bbox_for_result(
+        result=result,
+        source_box=src_norm,
+        target_box=tgt_norm,
+    )
+    canvas_w = source_width if src is not None else target_width
+    canvas_h = source_height if src is not None else target_height
+    if canvas_w > 0 and canvas_h > 0:
+        overlay_box = _expand_normalized_box_for_canvas(
+            overlay_box,
+            width=canvas_w,
+            height=canvas_h,
+        )
     return VisualAnnotation(
         annotation_id=f"ann-{index:03d}",
         index=index,
@@ -1313,11 +1421,7 @@ def _build_annotation(
         target_bbox=tgt.bbox if tgt is not None else None,
         source_bbox_normalized=src_norm,
         target_bbox_normalized=tgt_norm,
-        overlay_bbox_normalized=_overlay_bbox_for_result(
-            result=result,
-            source_box=src_norm,
-            target_box=tgt_norm,
-        ),
+        overlay_bbox_normalized=overlay_box,
     )
 
 
@@ -1327,15 +1431,39 @@ def _overlay_bbox_for_result(
     source_box: NormalizedBoundingBox | None,
     target_box: NormalizedBoundingBox | None,
 ) -> NormalizedBoundingBox:
+    if source_box is not None:
+        return source_box
     if result.match_type == MatchType.MISSING_IN_TARGET and source_box is not None:
         return source_box
     if result.match_type in _TARGET_CROP_MATCH_TYPES and target_box is not None:
         return target_box
-    if source_box is not None:
-        return source_box
     if target_box is not None:
         return target_box
     raise ValueError(f"Could not determine overlay box for {result.match_type!r}")
+
+
+def _expand_normalized_box_for_canvas(
+    box: NormalizedBoundingBox,
+    *,
+    width: int,
+    height: int,
+) -> NormalizedBoundingBox:
+    x1, y1, x2, y2 = _normalized_box_to_pixels(box, width=width, height=height)
+    pad = max(_OVERLAY_PAD_PIXELS, int(round(max(width, height) * _OVERLAY_PAD_RATIO)))
+    ex1 = max(0, x1 - pad)
+    ey1 = max(0, y1 - pad)
+    ex2 = min(width, x2 + pad)
+    ey2 = min(height, y2 + pad)
+    ex2 = max(ex1 + 1, ex2)
+    ey2 = max(ey1 + 1, ey2)
+    return NormalizedBoundingBox.from_pixel_bounds(
+        x1=ex1,
+        y1=ey1,
+        x2=ex2,
+        y2=ey2,
+        width=width,
+        height=height,
+    )
 
 
 def _iter_visual_results(results: list[MatchResult]) -> list[MatchResult]:
@@ -1523,6 +1651,7 @@ def _place_badge_for_box(
     page_width: int,
     page_height: int,
     occupied: list[tuple[int, int, int, int]],
+    avoid_rects: list[tuple[int, int, int, int]],
 ) -> BadgePlacement:
     x1, y1, x2, y2 = box
     page_x_max = max(0, page_width - badge_w)
@@ -1545,6 +1674,7 @@ def _place_badge_for_box(
             page_width=page_width,
             page_height=page_height,
             occupied=occupied,
+            avoid_rects=avoid_rects,
             axis=axis,
             gap=gap,
         )
@@ -1569,6 +1699,7 @@ def _place_badge_for_box(
         page_width=page_width,
         page_height=page_height,
         occupied=occupied,
+        avoid_rects=[],
         axis="x",
         gap=max(2, gap // 2),
     )
@@ -1593,10 +1724,12 @@ def _try_nudged_rect(
     page_width: int,
     page_height: int,
     occupied: list[tuple[int, int, int, int]],
+    avoid_rects: list[tuple[int, int, int, int]],
     axis: str,
     gap: int,
 ) -> tuple[int, int, int, int] | None:
     collision_pad = max(2, gap // 2)
+    avoid_pad = max(1, gap // 3)
     step = max(4, gap, min(badge_w, badge_h) // 3)
     if axis == "x":
         max_shift = max(0, page_width - badge_w)
@@ -1605,7 +1738,11 @@ def _try_nudged_rect(
             if x1 < 0 or x1 + badge_w > page_width:
                 continue
             rect = (x1, base_y, x1 + badge_w, base_y + badge_h)
-            if not _overlaps_any(rect, occupied, padding=collision_pad):
+            if not _overlaps_any(rect, occupied, padding=collision_pad) and not _overlaps_any(
+                rect,
+                avoid_rects,
+                padding=avoid_pad,
+            ):
                 return rect
         return None
     if axis == "y":
@@ -1615,11 +1752,17 @@ def _try_nudged_rect(
             if y1 < 0 or y1 + badge_h > page_height:
                 continue
             rect = (base_x, y1, base_x + badge_w, y1 + badge_h)
-            if not _overlaps_any(rect, occupied, padding=collision_pad):
+            if not _overlaps_any(rect, occupied, padding=collision_pad) and not _overlaps_any(
+                rect,
+                avoid_rects,
+                padding=avoid_pad,
+            ):
                 return rect
         return None
     rect = (base_x, base_y, base_x + badge_w, base_y + badge_h)
     if _overlaps_any(rect, occupied, padding=collision_pad):
+        return None
+    if _overlaps_any(rect, avoid_rects, padding=avoid_pad):
         return None
     return rect
 
@@ -1703,6 +1846,17 @@ def _html_payload(
                 "target_crop_data_url": crop_data_url,
             }
         )
+    # region agent log
+    _debug_log(
+        "H4",
+        "app/reporting/visual_diff.py:_html_payload",
+        "Built single-page HTML payload annotations",
+        {
+            "payload_annotations": len(annotations),
+            "manifest_annotations": len(manifest.annotations),
+        },
+    )
+    # endregion
     return {
         "manifest": manifest.model_dump(mode="json"),
         "base_image_data_url": image_to_data_url(source_image),
