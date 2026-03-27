@@ -41,6 +41,9 @@ ocr-windows = [
     "winrt-Windows.Foundation.Collections>=3.0.0",
     "winrt-Windows.Globalization>=3.0.0",
 ]
+ocr-google = [
+    "google-cloud-vision>=3.4.0",
+]
 ocr = [
     "pytesseract>=0.3.10",
     "paddleocr>=2.7.0",

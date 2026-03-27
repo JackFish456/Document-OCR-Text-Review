@@ -15,6 +15,7 @@ from app.core.config import Settings, reset_settings_cache
 from app.models.ocr import BoundingBox, OCRDocument, OCRLine, OCRPage
 from app.ocr.document_provider import CloudOCRNotImplementedError, OCRDependencyError
 from app.ocr.factory import get_document_ocr_provider, get_ocr_provider
+from app.ocr.local_provider import LocalOCRProvider
 from app.ocr.providers.windows_ocr import WindowsOCRProvider, winrt_result_to_page
 from app.ocr.stub_document_provider import StubDocumentOCRProvider
 from app.parsing.fields import RegionParser
@@ -204,7 +205,10 @@ def test_compare_service_windows_ocr_uses_direct_pdf_document_path(tmp_path: Pat
     )
     svc = _build_compare_service(settings)
 
-    with patch("app.services.compare.get_document_ocr_provider", return_value=provider):
+    with patch(
+        "app.services.compare.get_ocr_result_provider",
+        lambda _s: LocalOCRProvider(inner=provider),
+    ):
         with patch(
             "app.services.compare.get_ocr_provider",
             side_effect=AssertionError("raster OCR path should not be used for windows_ocr PDFs"),
@@ -224,7 +228,9 @@ def test_compare_service_windows_ocr_uses_direct_pdf_document_path(tmp_path: Pat
     assert source_field.bbox.x2 == pytest.approx(artifacts.source_page.width * 0.75, rel=0.05)
 
 
-def test_compare_service_windows_ocr_multipage_pdf_caches_one_document_per_path(tmp_path: Path) -> None:
+def test_compare_service_windows_ocr_multipage_pdf_caches_one_doc_per_path(
+    tmp_path: Path,
+) -> None:
     """Direct-PDF OCR reuses one OCRDocument per file; each page maps to the correct page_number."""
     source_pdf = tmp_path / "source_2p.pdf"
     target_pdf = tmp_path / "target_2p.pdf"
@@ -275,7 +281,10 @@ def test_compare_service_windows_ocr_multipage_pdf_caches_one_document_per_path(
     )
     svc = _build_compare_service(settings)
 
-    with patch("app.services.compare.get_document_ocr_provider", return_value=provider):
+    with patch(
+        "app.services.compare.get_ocr_result_provider",
+        lambda _s: LocalOCRProvider(inner=provider),
+    ):
         with patch(
             "app.services.compare.get_ocr_provider",
             side_effect=AssertionError("raster OCR path should not be used for windows_ocr PDFs"),

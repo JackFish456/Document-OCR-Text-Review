@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.report_llm_summary_settings import ReportLlmSummaryConfig
@@ -46,6 +46,25 @@ class Settings(BaseSettings):
     # OCR provider selection (see factory for aliases: paddle, windows, etc.)
     ocr_provider: str = "windows_ocr"
 
+    # Normalized OCRResult path: "local" (in-process) or "google" (Cloud Vision).
+    # Env ``OCR_PROVIDER`` or ``DRAWING_COMPARE_OCR_RESULT_BACKEND`` (not ``ocr_provider``).
+    ocr_result_backend: Literal["local", "google"] = Field(
+        default="local",
+        validation_alias=AliasChoices(
+            "OCR_PROVIDER",
+            "DRAWING_COMPARE_OCR_RESULT_BACKEND",
+        ),
+    )
+
+    # When True, compare runs local + Google OCR pipelines independently (see compare service).
+    enable_dual_ocr: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "ENABLE_DUAL_OCR",
+            "DRAWING_COMPARE_ENABLE_DUAL_OCR",
+        ),
+    )
+
     # File-path OCR (:class:`app.ocr.document_provider.OCRProvider`)
     document_ocr_provider: str = "stub_document"
     tesseract_lang: str = "eng"
@@ -54,6 +73,16 @@ class Settings(BaseSettings):
     paddle_lang: str = "en"
     paddle_use_angle_cls: bool = True
     paddle_use_gpu: bool = False
+
+    # Google Cloud Vision (optional; also honors standard env ``GOOGLE_APPLICATION_CREDENTIALS``)
+    google_application_credentials: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "DRAWING_COMPARE_GOOGLE_APPLICATION_CREDENTIALS",
+        ),
+        repr=False,
+    )
 
     # Evaluation
     golden_manifest_path: Path | None = None

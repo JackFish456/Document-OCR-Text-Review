@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import math
 import json
+import math
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.core.config import Settings
 from app.core.logging import get_logger
@@ -16,10 +16,10 @@ from app.models.diagnostics import PipelineDiagnostics
 from app.models.extraction import ExtractedField
 from app.models.match import MatchResult
 from app.models.ocr import OCRDocument, OCRPage, OcrRegion
-from app.ocr.base import OcrProvider
-from app.ocr.document_provider import OCRProvider as DocumentOCRProvider
-from app.ocr.factory import get_document_ocr_provider, get_ocr_provider
+from app.ocr.base import OCRProvider, OcrProvider, OCRResult
+from app.ocr.factory import get_ocr_provider, get_ocr_result_provider
 from app.ocr.geometry_utils import bbox_from_xywh
+from app.ocr.result_adapter import ocr_provider_document_label, ocr_result_to_document
 from app.parsing.fields import RegionParser
 from app.preprocessing.io import is_pdf_path
 from app.preprocessing.ocr_run import run_ocr_on_preprocessed_page
@@ -34,6 +34,52 @@ _DIRECT_PDF_DOCUMENT_OCR_KEYS = frozenset({"windows", "windows_ocr"})
 _MIN_BBOX_EXTENT = 1e-3
 
 
+def _merge_ocr_results(left: OCRResult, right: OCRResult) -> OCRResult:
+    """Concatenate pages from two file-level OCR results (pages renumbered sequentially)."""
+    n = len(left.pages)
+    merged_pages = list(left.pages)
+    for i, p in enumerate(right.pages):
+        merged_pages.append(p.model_copy(update={"page_number": n + i + 1}))
+    return OCRResult(pages=merged_pages)
+
+
+def _merge_ocr_paths(
+    by_path: dict[str, OCRResult],
+    path_a: Path,
+    path_b: Path,
+) -> OCRResult | None:
+    """Merge OCR from source/target paths when both used document OCR (PDF cache keys)."""
+    ka = str(path_a.resolve())
+    kb = str(path_b.resolve())
+    ra = by_path.get(ka)
+    rb = by_path.get(kb)
+    if ra is None and rb is None:
+        return None
+    if ra is None:
+        return rb
+    if rb is None:
+        return ra
+    return _merge_ocr_results(ra, rb)
+
+
+def _dual_branch_pipeline_payload(
+    response: CompareResponse,
+    artifacts: CompareArtifacts,
+) -> dict[str, Any]:
+    """Serializable output for one dual-OCR branch (no raw page rasters)."""
+    return {
+        "ok": True,
+        "compare_response": response.model_dump(mode="json"),
+        "artifacts": {
+            "results": [r.model_dump(mode="json") for r in artifacts.results],
+            "source_fields": [f.model_dump(mode="json") for f in artifacts.source_fields],
+            "target_fields": [f.model_dump(mode="json") for f in artifacts.target_fields],
+            "source_page_count": len(artifacts.source_pages),
+            "target_page_count": len(artifacts.target_pages),
+        },
+    }
+
+
 def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, object]) -> None:
     # region agent log
     payload = {
@@ -46,10 +92,11 @@ def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, 
         "timestamp": int(time.time() * 1000),
     }
     try:
-        with Path("C:/Users/Jack.Fisher/OneDrive - Kiewit Corporation/Desktop/Document OCR Text Review/debug-2f2721.log").open(
-            "a",
-            encoding="utf-8",
-        ) as fp:
+        _log_path = Path(
+            "C:/Users/Jack.Fisher/OneDrive - Kiewit Corporation/Desktop/"
+            "Document OCR Text Review/debug-2f2721.log"
+        )
+        with _log_path.open("a", encoding="utf-8") as fp:
             fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -172,13 +219,12 @@ def _remap_region_bbox_to_preprocessed_page(
 
 
 def _document_regions_for_preprocessed_page(
-    provider: DocumentOCRProvider,
     path: Path,
     preprocess_page: PreprocessPageResult,
     *,
-    document: OCRDocument | None = None,
+    document: OCRDocument,
 ) -> list[OcrRegion]:
-    doc = document if document is not None else provider.extract(str(path))
+    doc = document
     page = next((p for p in doc.pages if p.page_number == preprocess_page.page_number), None)
     if page is None:
         return []
@@ -251,6 +297,8 @@ class DrawingCompareService:
         ocr_provider: str | None = None,
         preprocess_config: PreprocessConfig | None = None,
         job_metadata: dict[str, Any] | None = None,
+        ocr_result_backend: Literal["local", "google"] | None = None,
+        enable_dual_ocr: bool | None = None,
     ) -> CompareResponse:
         """Run preprocess → OCR → parse → match → classify → reporting for two local paths."""
         response, _ = self.compare_paths_with_artifacts(
@@ -260,6 +308,8 @@ class DrawingCompareService:
             preprocess_config=preprocess_config,
             job_metadata=job_metadata,
             include_text_reports=True,
+            ocr_result_backend=ocr_result_backend,
+            enable_dual_ocr=enable_dual_ocr,
         )
         return response
 
@@ -272,11 +322,15 @@ class DrawingCompareService:
         preprocess_config: PreprocessConfig | None = None,
         job_metadata: dict[str, Any] | None = None,
         include_text_reports: bool = True,
+        ocr_result_backend: Literal["local", "google"] | None = None,
+        enable_dual_ocr: bool | None = None,
     ) -> tuple[CompareResponse, CompareArtifacts]:
         """Run compare and retain page rasters plus raw match rows for local renderers."""
         eff = self._effective_settings(
             ocr_provider=ocr_provider,
             preprocess_config=preprocess_config,
+            ocr_result_backend=ocr_result_backend,
+            enable_dual_ocr=enable_dual_ocr,
         )
         logger.info(
             "pipeline start source=%s target=%s ocr_provider=%s",
@@ -297,7 +351,15 @@ class DrawingCompareService:
         )
         # endregion
         try:
-            artifacts = self._run_pipeline(source, target, settings=eff)
+            if eff.enable_dual_ocr:
+                return self._compare_paths_dual_ocr(
+                    source,
+                    target,
+                    eff=eff,
+                    job_metadata=job_metadata,
+                    include_text_reports=include_text_reports,
+                )
+            artifacts, _ = self._run_pipeline(source, target, settings=eff)
         except Exception:
             logger.exception("pipeline failed source=%s target=%s", source, target)
             raise
@@ -341,6 +403,8 @@ class DrawingCompareService:
         ocr_provider: str | None = None,
         preprocess_config: PreprocessConfig | None = None,
         job_metadata: dict[str, Any] | None = None,
+        ocr_result_backend: Literal["local", "google"] | None = None,
+        enable_dual_ocr: bool | None = None,
     ) -> tuple[CompareResponse, PipelineDiagnostics]:
         """Same as :meth:`compare_paths` but also returns parsed fields for tooling / eval."""
         response, artifacts = self.compare_paths_with_artifacts(
@@ -350,6 +414,8 @@ class DrawingCompareService:
             preprocess_config=preprocess_config,
             job_metadata=job_metadata,
             include_text_reports=True,
+            ocr_result_backend=ocr_result_backend,
+            enable_dual_ocr=enable_dual_ocr,
         )
         diagnostics = PipelineDiagnostics(
             source_fields=artifacts.source_fields,
@@ -362,6 +428,8 @@ class DrawingCompareService:
         *,
         ocr_provider: str | None,
         preprocess_config: PreprocessConfig | None,
+        ocr_result_backend: Literal["local", "google"] | None = None,
+        enable_dual_ocr: bool | None = None,
     ) -> Settings:
         # region agent log
         _debug_log(
@@ -372,10 +440,17 @@ class DrawingCompareService:
                 "requested_ocr_provider": ocr_provider,
                 "base_settings_ocr_provider": self._settings.ocr_provider,
                 "has_preprocess_override": preprocess_config is not None,
+                "ocr_result_backend": ocr_result_backend,
+                "enable_dual_ocr": enable_dual_ocr,
             },
         )
         # endregion
-        if not (ocr_provider and ocr_provider.strip()) and preprocess_config is None:
+        if (
+            not (ocr_provider and ocr_provider.strip())
+            and preprocess_config is None
+            and ocr_result_backend is None
+            and enable_dual_ocr is None
+        ):
             # region agent log
             _debug_log(
                 "H9",
@@ -390,6 +465,10 @@ class DrawingCompareService:
             updates["ocr_provider"] = ocr_provider.strip().lower()
         if preprocess_config is not None:
             updates["preprocess"] = preprocess_config
+        if ocr_result_backend is not None:
+            updates["ocr_result_backend"] = ocr_result_backend
+        if enable_dual_ocr is not None:
+            updates["enable_dual_ocr"] = enable_dual_ocr
         resolved = self._settings.model_copy(update=updates)
         # region agent log
         _debug_log(
@@ -407,13 +486,149 @@ class DrawingCompareService:
         p = Path(ref)
         return p if p.is_file() else None
 
+    def _compare_paths_dual_ocr(
+        self,
+        source: Path,
+        target: Path,
+        *,
+        eff: Settings,
+        job_metadata: dict[str, Any] | None,
+        include_text_reports: bool,
+    ) -> tuple[CompareResponse, CompareArtifacts]:
+        """Run local and Google OCR backends independently; failures are isolated per branch."""
+        local_response: CompareResponse | None = None
+        local_artifacts: CompareArtifacts | None = None
+        local_err: str | None = None
+        google_response: CompareResponse | None = None
+        google_artifacts: CompareArtifacts | None = None
+        google_err: str | None = None
+
+        local_ocr_by_path: dict[str, OCRResult] = {}
+        google_ocr_by_path: dict[str, OCRResult] = {}
+        try:
+            local_artifacts, local_ocr_by_path = self._run_pipeline(
+                source,
+                target,
+                settings=eff,
+                ocr_result_backend="local",
+            )
+            local_response = self._reporter.build(
+                local_artifacts.results,
+                total_source=local_artifacts.total_source,
+                extras={
+                    "mode": "full",
+                    "source_path": str(source.resolve()),
+                    "target_path": str(target.resolve()),
+                    "ocr_provider": eff.ocr_provider,
+                    "ocr_result_backend": "local",
+                    "job_metadata": job_metadata or {},
+                },
+                include_text_reports=include_text_reports,
+            )
+        except Exception as exc:
+            logger.exception("dual OCR local pipeline failed")
+            local_err = str(exc)
+
+        try:
+            google_artifacts, google_ocr_by_path = self._run_pipeline(
+                source,
+                target,
+                settings=eff,
+                ocr_result_backend="google",
+            )
+            google_response = self._reporter.build(
+                google_artifacts.results,
+                total_source=google_artifacts.total_source,
+                extras={
+                    "mode": "full",
+                    "source_path": str(source.resolve()),
+                    "target_path": str(target.resolve()),
+                    "ocr_provider": eff.ocr_provider,
+                    "ocr_result_backend": "google",
+                    "job_metadata": job_metadata or {},
+                },
+                include_text_reports=include_text_reports,
+            )
+        except Exception as exc:
+            logger.exception("dual OCR google pipeline failed")
+            google_err = str(exc)
+
+        if local_response is None and google_response is None:
+            msg = f"dual OCR: both pipelines failed (local={local_err!r}, google={google_err!r})"
+            raise RuntimeError(msg) from None
+
+        local_out: dict[str, Any]
+        if local_response is not None and local_artifacts is not None:
+            local_out = _dual_branch_pipeline_payload(local_response, local_artifacts)
+        else:
+            local_out = {"ok": False, "error": local_err or "local_pipeline_failed"}
+
+        google_out: dict[str, Any]
+        if google_response is not None and google_artifacts is not None:
+            google_out = _dual_branch_pipeline_payload(google_response, google_artifacts)
+        else:
+            google_out = {"ok": False, "error": google_err or "google_pipeline_failed"}
+
+        primary = local_response if local_response is not None else google_response
+        assert primary is not None
+        artifacts_out = (
+            local_artifacts if local_artifacts is not None else google_artifacts
+        )
+        assert artifacts_out is not None
+
+        ocr_comparison: dict[str, Any]
+        try:
+            from app.ocr.ocr_comparator import compare_ocr
+
+            merged_local = _merge_ocr_paths(local_ocr_by_path, source, target)
+            merged_google = _merge_ocr_paths(google_ocr_by_path, source, target)
+            if merged_local is not None and merged_google is not None:
+                metrics = compare_ocr(merged_local, merged_google)
+                ocr_comparison = {
+                    **metrics.model_dump(mode="json"),
+                    "summary": metrics.summary(),
+                }
+            else:
+                ocr_comparison = {
+                    "ok": False,
+                    "reason": "no_pdf_document_ocr_results",
+                }
+        except Exception as exc:
+            logger.exception("dual OCR comparison metrics failed")
+            ocr_comparison = {"ok": False, "error": str(exc)}
+
+        combined_extras: dict[str, Any] = {
+            "mode": "dual_ocr",
+            "source_path": str(source.resolve()),
+            "target_path": str(target.resolve()),
+            "ocr_provider": eff.ocr_provider,
+            "job_metadata": job_metadata or {},
+            "local": local_out,
+            "google": google_out,
+            "ocr_comparison": ocr_comparison,
+        }
+        response = primary.model_copy(update={"extras": combined_extras})
+
+        logger.info(
+            "dual OCR pipeline done local_ok=%s google_ok=%s",
+            local_out.get("ok"),
+            google_out.get("ok"),
+        )
+        return response, artifacts_out
+
     def _run_pipeline(
         self,
         path_a: Path,
         path_b: Path,
         *,
         settings: Settings,
-    ) -> CompareArtifacts:
+        ocr_result_backend: Literal["local", "google"] | None = None,
+    ) -> tuple[CompareArtifacts, dict[str, OCRResult]]:
+        pipeline_settings = (
+            settings.model_copy(update={"ocr_result_backend": ocr_result_backend})
+            if ocr_result_backend is not None
+            else settings
+        )
         preprocessor = DrawingPreprocessPipeline(settings)
         pages_a = preprocessor.process_path(path_a)
         pages_b = preprocessor.process_path(path_b)
@@ -438,8 +653,9 @@ class DrawingCompareService:
             )
 
         ndarray_ocr: OcrProvider | None = None
-        document_ocr: DocumentOCRProvider | None = None
+        ocr_result_provider: OCRProvider | None = None
         pdf_doc_cache: dict[str, OCRDocument] = {}
+        pdf_ocr_result_cache: dict[str, OCRResult] = {}
 
         def _get_ndarray_ocr() -> OcrProvider:
             nonlocal ndarray_ocr
@@ -447,36 +663,39 @@ class DrawingCompareService:
                 ndarray_ocr = get_ocr_provider(settings)
             return ndarray_ocr
 
-        def _get_document_ocr() -> DocumentOCRProvider:
-            nonlocal document_ocr
-            if document_ocr is None:
-                bridge_settings = settings.model_copy(
-                    update={"document_ocr_provider": settings.ocr_provider}
+        def _get_ocr_result_provider() -> OCRProvider:
+            nonlocal ocr_result_provider
+            if ocr_result_provider is None:
+                bridge_settings = pipeline_settings.model_copy(
+                    update={"document_ocr_provider": pipeline_settings.ocr_provider}
                 )
-                document_ocr = get_document_ocr_provider(bridge_settings)
-            return document_ocr
+                ocr_result_provider = get_ocr_result_provider(bridge_settings)
+            return ocr_result_provider
 
         def _cached_pdf_document(path: Path) -> OCRDocument:
             key = str(path.resolve())
             if key not in pdf_doc_cache:
-                pdf_doc_cache[key] = _get_document_ocr().extract(str(path))
+                prov = _get_ocr_result_provider()
+                ocr_result = prov.extract(str(path))
+                pdf_ocr_result_cache[key] = ocr_result
+                pdf_doc_cache[key] = ocr_result_to_document(
+                    ocr_result,
+                    document_id=path.stem or path.name or "document",
+                    source_path=str(path),
+                    provider_name=ocr_provider_document_label(prov),
+                )
             return pdf_doc_cache[key]
 
         def _ocr_regions(path: Path, page: PreprocessPageResult) -> list[OcrRegion]:
             if _uses_direct_pdf_document_ocr(settings, path):
-                provider = _get_document_ocr()
+                doc = _cached_pdf_document(path)
                 logger.info(
                     "using direct PDF document OCR source=%s provider=%s page=%s",
                     path,
-                    provider.provider_name,
+                    doc.provider_name,
                     page.page_number,
                 )
-                return _document_regions_for_preprocessed_page(
-                    provider,
-                    path,
-                    page,
-                    document=_cached_pdf_document(path),
-                )
+                return _document_regions_for_preprocessed_page(path, page, document=doc)
             return run_ocr_on_preprocessed_page(_get_ndarray_ocr(), page)
 
         fields_a: list[ExtractedField] = []
@@ -542,10 +761,13 @@ class DrawingCompareService:
             },
         )
         # endregion
-        return CompareArtifacts(
-            source_pages=list(pages_a),
-            target_pages=list(pages_b),
-            results=results,
-            source_fields=fields_a,
-            target_fields=fields_b,
+        return (
+            CompareArtifacts(
+                source_pages=list(pages_a),
+                target_pages=list(pages_b),
+                results=results,
+                source_fields=fields_a,
+                target_fields=fields_b,
+            ),
+            pdf_ocr_result_cache,
         )

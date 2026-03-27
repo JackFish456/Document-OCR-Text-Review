@@ -10,7 +10,12 @@ from app.ocr.document_provider import (
     OCRProvider,
     OCRProviderError,
 )
-from app.ocr.factory import get_document_ocr_provider, get_ocr_provider
+from app.ocr.factory import (
+    get_document_ocr_provider,
+    get_local_ocr_provider,
+    get_ocr_provider,
+    get_ocr_result_provider,
+)
 
 __all__ = [
     "CloudOCRNotImplementedError",
@@ -22,5 +27,7 @@ __all__ = [
     "OCRProviderError",
     "OcrProvider",
     "get_document_ocr_provider",
+    "get_local_ocr_provider",
     "get_ocr_provider",
+    "get_ocr_result_provider",
 ]

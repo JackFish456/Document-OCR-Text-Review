@@ -11,6 +11,7 @@ from uuid import uuid4
 import cv2
 import fitz
 import numpy as np
+import pytest
 
 from app.models.comparison import CompareResponse
 from app.models.extraction import ExtractedField
@@ -114,10 +115,12 @@ def _compare_artifacts_multipage(
     target_fields = [r.target_field for r in results if r.target_field is not None]
     return CompareArtifacts(
         source_pages=[
-            _page(img, source_path="source.png", page_number=i + 1) for i, img in enumerate(source_images)
+            _page(img, source_path="source.png", page_number=i + 1)
+            for i, img in enumerate(source_images)
         ],
         target_pages=[
-            _page(img, source_path="target.png", page_number=i + 1) for i, img in enumerate(target_images)
+            _page(img, source_path="target.png", page_number=i + 1)
+            for i, img in enumerate(target_images)
         ],
         results=results,
         source_fields=source_fields,
@@ -453,7 +456,10 @@ def test_plan_badge_placements_falls_back_inside_for_edge_box() -> None:
     assert placement.y1 >= 0
 
 
-def test_run_manual_compare_writes_minimal_reviewer_bundle() -> None:
+def test_run_manual_compare_writes_minimal_reviewer_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRAWING_COMPARE_SKIP_GOOGLE_OCR_EXPERIMENT", "1")
     tmp_path = Path("data/tmp/test_visual_diff") / uuid4().hex
     tmp_path.mkdir(parents=True, exist_ok=True)
     try:
@@ -494,6 +500,21 @@ def test_run_manual_compare_writes_minimal_reviewer_bundle() -> None:
         }
 
         summary = json.loads(Path(outputs["summary_json"]).read_text(encoding="utf-8"))
+        assert summary["ocr_artifacts"] == {
+            "local_raw": "ocr/local_raw.json",
+            "google_raw": "ocr/google_raw.json",
+            "normalized": "ocr/normalized.json",
+            "ocr_comparison_metrics": "ocr/ocr_comparison_metrics.json",
+        }
+        ocr_dir = out_dir / "ocr"
+        for name in (
+            "local_raw.json",
+            "google_raw.json",
+            "normalized.json",
+            "ocr_comparison_metrics.json",
+        ):
+            assert (ocr_dir / name).is_file()
+
         assert summary["primary_reviewer_artifacts"] == {
             "visual_overlay": "visual_diff_overlay.pdf",
             "visual_overlay_kind": "pdf",
@@ -509,7 +530,10 @@ def test_run_manual_compare_writes_minimal_reviewer_bundle() -> None:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
 
-def test_run_manual_compare_full_artifacts_writes_debug_bundle() -> None:
+def test_run_manual_compare_full_artifacts_writes_debug_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRAWING_COMPARE_SKIP_GOOGLE_OCR_EXPERIMENT", "1")
     tmp_path = Path("data/tmp/test_visual_diff") / uuid4().hex
     tmp_path.mkdir(parents=True, exist_ok=True)
     try:

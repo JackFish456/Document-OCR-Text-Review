@@ -1,9 +1,10 @@
 """Resolve OCR provider from settings."""
 
 from app.core.config import Settings
-from app.ocr.base import OcrProvider
+from app.ocr.base import OCRProvider, OcrProvider
 from app.ocr.document_adapter import DocumentProviderAdapter
 from app.ocr.document_provider import OCRProvider as DocumentOCRProvider
+from app.ocr.local_provider import LocalOCRProvider
 from app.ocr.stub_document_provider import StubDocumentOCRProvider
 from app.ocr.stub_provider import EchoOcrProvider, StubOcrProvider
 
@@ -27,6 +28,20 @@ def get_ocr_provider(settings: Settings) -> OcrProvider:
     doc_provider = get_document_ocr_provider(bridge_settings)
     scratch = settings.data_dir / "tmp" / "ocr_adapter"
     return DocumentProviderAdapter(doc_provider, scratch_dir=scratch)
+
+
+def get_local_ocr_provider(settings: Settings) -> LocalOCRProvider:
+    """Always the local legacy stack as :class:`OCRResult` (ignores ``ocr_result_backend``)."""
+    return LocalOCRProvider(inner=get_document_ocr_provider(settings))
+
+
+def get_ocr_result_provider(settings: Settings) -> OCRProvider:
+    """Return :class:`OCRResult` provider per ``ocr_result_backend`` (local or google)."""
+    if settings.ocr_result_backend == "google":
+        from app.ocr.google_provider import GoogleVisionOCRProvider
+
+        return GoogleVisionOCRProvider(credentials_path=settings.google_application_credentials)
+    return LocalOCRProvider(inner=get_document_ocr_provider(settings))
 
 
 def get_document_ocr_provider(settings: Settings) -> DocumentOCRProvider:
