@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     # Evaluation
     golden_manifest_path: Path | None = None
 
+    # Hybrid vector matching (Qdrant + sentence embeddings).
+    # Env (each prefixed with DRAWING_COMPARE_): ENABLE_VECTOR_MATCHING, VECTOR_TOP_K,
+    # VECTOR_WEIGHT, QDRANT_URL, QDRANT_COLLECTION_PREFIX, EMBEDDING_MODEL.
+    # With ENABLE_VECTOR_MATCHING false (default), embedding/Qdrant are not used.
+    ENABLE_VECTOR_MATCHING: bool = Field(default=False)
+    VECTOR_TOP_K: int = Field(default=5, ge=1)
+    VECTOR_WEIGHT: float = Field(default=0.25, ge=0.0, le=1.0)
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION_PREFIX: str = "drawing_compare"
+    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+
     # When ``report_llm_summary.api_key`` is empty, used as the LLM Bearer token (OpenAI-style).
     # Env: ``DRAWING_COMPARE_OPENAI_API_KEY`` (this project) before ``OPENAI_API_KEY`` (common).
     openai_api_key: str | None = Field(default=None, repr=False)

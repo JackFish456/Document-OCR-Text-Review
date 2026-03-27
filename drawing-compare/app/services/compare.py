@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import json
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -32,6 +32,47 @@ from app.services.compare_artifacts import CompareArtifacts
 logger = get_logger(__name__)
 _DIRECT_PDF_DOCUMENT_OCR_KEYS = frozenset({"windows", "windows_ocr"})
 _MIN_BBOX_EXTENT = 1e-3
+
+
+def _enrich_source_fields_with_vector_candidates(
+    settings: Settings,
+    *,
+    target_path: Path,
+    source_fields: list[ExtractedField],
+    target_fields: list[ExtractedField],
+) -> None:
+    """Embed target fields into Qdrant and attach top-k retrieval to each source field."""
+    if not settings.ENABLE_VECTOR_MATCHING or not source_fields:
+        return
+    if not target_fields:
+        for i, f in enumerate(source_fields):
+            source_fields[i] = f.model_copy(update={"vector_candidates": []})
+        return
+    target_doc_id = str(target_path.resolve())
+    try:
+        # Deferred so importing this module does not require sentence-transformers / qdrant-client.
+        from app.embeddings.factory import get_text_embedder
+        from app.vector_store.qdrant_store import QdrantStore
+
+        embedder = get_text_embedder()
+        store = QdrantStore(settings)
+        target_embeddings = [embedder.embed_field(f) for f in target_fields]
+        store.upsert_fields(target_doc_id, target_fields, target_embeddings)
+        enriched: list[ExtractedField] = []
+        for f in source_fields:
+            vec = embedder.embed_field(f)
+            candidates = store.query_similar(
+                target_doc_id,
+                vec,
+                settings.VECTOR_TOP_K,
+            )
+            enriched.append(f.model_copy(update={"vector_candidates": candidates}))
+        source_fields[:] = enriched
+    except Exception:
+        logger.warning(
+            "vector candidate enrichment failed; continuing without vector_candidates",
+            exc_info=True,
+        )
 
 
 def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, object]) -> None:
@@ -523,10 +564,18 @@ class DrawingCompareService:
                 )
                 # endregion
 
+        _enrich_source_fields_with_vector_candidates(
+            settings,
+            target_path=path_b,
+            source_fields=fields_a,
+            target_fields=fields_b,
+        )
+
         engine_cfg = FieldComparisonConfig.from_settings_like(
             fuzzy_match_threshold=settings.fuzzy_match_threshold,
             fuzzy_changed_threshold=settings.fuzzy_changed_threshold,
             uncertain_score_low=settings.uncertain_score_low,
+            vector_weight=settings.VECTOR_WEIGHT,
         )
         engine = FieldComparisonEngine(engine_cfg)
         results = engine.build_match_results(fields_a, fields_b)

@@ -17,16 +17,27 @@ from app.api.compare_job_store import (
     LLM_USAGE_FILENAME,
     artifact_file_path,
     media_type_for_filename,
+    persist_batch_reviewer_artifacts,
     persist_reviewer_artifacts,
 )
 from app.api.deps import get_compare_service
 from app.api.uploads import save_upload
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.models.comparison import CompareRequest, CompareResponse
+from app.models.comparison import (
+    BatchCompareRequest,
+    BatchCompareResponse,
+    CompareRequest,
+    CompareResponse,
+)
 from app.ocr.document_provider import OCRError
 from app.preprocessing.settings import PreprocessConfig
-from app.reporting.reviewer_bundle import build_reviewer_bundle, reviewer_output_extras
+from app.reporting.reviewer_bundle import (
+    batch_reviewer_output_extras,
+    build_reviewer_bundle,
+    reviewer_output_extras,
+)
+from app.services.batch_compare import run_baseline_many_paths
 from app.services.compare import DrawingCompareService
 from app.services.compare_artifacts import CompareArtifacts
 
@@ -48,7 +59,11 @@ def _attach_reviewer_outputs(
     bundle = build_reviewer_bundle(response, compare_artifacts)
     job_id = uuid4().hex
     llm_usage = response.extras.get("comparison_llm_usage")
-    persist_reviewer_artifacts(job_id, bundle, llm_usage=llm_usage if isinstance(llm_usage, dict) else None)
+    persist_reviewer_artifacts(
+        job_id,
+        bundle,
+        llm_usage=llm_usage if isinstance(llm_usage, dict) else None,
+    )
     merged = dict(response.extras)
     merged.update(reviewer_output_extras(job_id, bundle))
     merged["output_llm_usage_href"] = f"/compare/artifacts/{job_id}/{LLM_USAGE_FILENAME}"
@@ -292,4 +307,93 @@ def compare_from_paths(
         raise HTTPException(
             status_code=500,
             detail="The comparison pipeline failed; see server logs for details",
+        ) from None
+
+
+def _run_batch_paths_compare(
+    svc: DrawingCompareService,
+    body: BatchCompareRequest,
+) -> BatchCompareResponse:
+    baseline = _resolve_local_path(body.baseline_uri)
+    if baseline is None:
+        raise HTTPException(
+            status_code=422,
+            detail="baseline_uri is not a readable local file for this server process",
+        )
+    candidates: list[Path] = []
+    for uri in body.candidate_uris:
+        p = _resolve_local_path(uri)
+        if p is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"candidate_uri is not a readable local file: {uri}",
+            )
+        candidates.append(p)
+
+    preprocess_merged = None
+    if body.preprocess_config is not None:
+        try:
+            preprocess_merged = svc.merge_preprocess_patch(body.preprocess_config)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+    labels: list[str | None] | None
+    if body.candidate_labels is None:
+        labels = None
+    else:
+        labels = [str(x) for x in body.candidate_labels]
+
+    batch_resp, merged_pdf, docx, llm_usage = run_baseline_many_paths(
+        svc,
+        baseline,
+        candidates,
+        labels,
+        job_metadata=body.job_metadata,
+        fail_fast=body.fail_fast,
+        include_text_reports=body.include_text_reports,
+        ocr_provider=body.ocr_provider,
+        preprocess_config=preprocess_merged,
+    )
+
+    job_id = uuid4().hex
+    persist_batch_reviewer_artifacts(
+        job_id,
+        merged_pdf_bytes=merged_pdf,
+        comparison_docx=docx,
+        llm_usage=llm_usage,
+    )
+    merged_extras = dict(batch_resp.extras)
+    merged_extras.update(batch_reviewer_output_extras(job_id))
+    merged_extras["output_llm_usage_href"] = f"/compare/artifacts/{job_id}/{LLM_USAGE_FILENAME}"
+    return batch_resp.model_copy(update={"extras": merged_extras})
+
+
+@router.post(
+    "/compare/paths/batch",
+    response_model=BatchCompareResponse,
+    summary="Compare one baseline against many candidates (server-local paths)",
+    description=(
+        "Runs the same pairwise pipeline as /compare/paths for each candidate against the "
+        "baseline, then returns one multi-page annotated PDF (pairwise sections appended in order)."
+    ),
+)
+def compare_batch_from_paths(
+    body: BatchCompareRequest,
+    svc: DrawingCompareService = Depends(get_compare_service),  # noqa: B008
+) -> BatchCompareResponse:
+    try:
+        return _run_batch_paths_compare(svc, body)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("compare/paths/batch request rejected: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except OCRError as e:
+        logger.warning("compare/paths/batch OCR rejected: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception:
+        logger.exception("compare/paths/batch pipeline failure")
+        raise HTTPException(
+            status_code=500,
+            detail="The batch comparison pipeline failed; see server logs for details",
         ) from None

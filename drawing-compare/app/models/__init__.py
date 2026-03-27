@@ -1,6 +1,12 @@
 """Pydantic domain models."""
 
-from app.models.comparison import CompareRequest, CompareResponse
+from app.models.comparison import (
+    BatchCompareRequest,
+    BatchCompareResponse,
+    BatchPairResult,
+    CompareRequest,
+    CompareResponse,
+)
 from app.models.evaluation import (
     EvaluationRunSummary,
     FieldLevelMetric,
@@ -12,7 +18,6 @@ from app.models.evaluation import (
     GoldenPairManifestEntry,
 )
 from app.models.extraction import ExtractedField
-from app.models.spatial_metadata import SpatialMetadata
 from app.models.golden import GoldenExpectedLabel, GoldenPair, GoldenPairExpected
 from app.models.match import ComparisonReport, ComparisonSummary, MatchResult, MatchType
 from app.models.ocr import (
@@ -20,8 +25,8 @@ from app.models.ocr import (
     OCRDocument,
     OCRLine,
     OCRPage,
-    OCRToken,
     OcrRegion,
+    OCRToken,
     normalize_ocr_text,
 )
 from app.models.review_flag import ReviewFlag, ReviewFlagSeverity, ReviewFlagType
@@ -33,8 +38,12 @@ from app.models.serialization import (
     model_to_dict,
     model_to_json,
 )
+from app.models.spatial_metadata import SpatialMetadata
 
 __all__ = [
+    "BatchCompareRequest",
+    "BatchCompareResponse",
+    "BatchPairResult",
     "BoundingBox",
     "CompareRequest",
     "CompareResponse",

@@ -12,6 +12,12 @@ ENV/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
 *.egg-info/
 dist/
 build/
@@ -23,3 +29,10 @@ experiments/provider_benchmarks/*
 !experiments/provider_benchmarks/.gitkeep
 data/tmp/
 .tmp/
+
+# Merge / patch artifacts
+*.orig
+*.rej
+
+# Office document lock files (often created by Word/Excel when a file is open)
+~$*

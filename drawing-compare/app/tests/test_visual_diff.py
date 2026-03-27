@@ -21,6 +21,7 @@ from app.reporting.reviewer_bundle import build_reviewer_bundle
 from app.reporting.visual_diff import (
     build_visual_diff_artifacts,
     build_visual_diff_manifest,
+    merge_reviewer_visual_bytes,
     plan_badge_placements,
     render_visual_diff_overlay,
     render_visual_diff_overlay_pdf,
@@ -560,3 +561,20 @@ def test_run_manual_compare_full_artifacts_writes_debug_bundle() -> None:
         }
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_merge_reviewer_visual_bytes_staples_two_pdfs() -> None:
+    blobs: list[bytes] = []
+    for _ in range(2):
+        doc = fitz.open()
+        try:
+            doc.new_page(width=80, height=80)
+            blobs.append(doc.write(deflate=True))
+        finally:
+            doc.close()
+    merged = merge_reviewer_visual_bytes([(b, "pdf") for b in blobs])
+    m = fitz.open(stream=merged, filetype="pdf")
+    try:
+        assert m.page_count == 2
+    finally:
+        m.close()

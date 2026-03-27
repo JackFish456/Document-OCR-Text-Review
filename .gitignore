@@ -1,1 +1,13 @@
+# Logs
 *.log
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor backups
+*~
+*.swp
+*.swo

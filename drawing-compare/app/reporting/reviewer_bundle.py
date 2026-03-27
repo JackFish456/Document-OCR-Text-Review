@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 ReviewerVisualKind = Literal["pdf", "png"]
 PDF_VISUAL_FILENAME = "visual_diff_overlay.pdf"
 PNG_VISUAL_FILENAME = "visual_diff_overlay.png"
+MERGED_PDF_FILENAME = "visual_diff_overlay_merged.pdf"
 WORD_OUTPUT_FILENAME = "comparison_summary.docx"
 
 
@@ -92,3 +93,16 @@ def reviewer_output_extras(job_id: str, bundle: ReviewerBundle) -> dict[str, str
     else:
         extras["output_png_href"] = visual_href
     return extras
+
+
+def batch_reviewer_output_extras(job_id: str) -> dict[str, str]:
+    """Artifact hrefs for baseline-vs-many batch (single stapled PDF)."""
+    merged_href = f"/compare/artifacts/{job_id}/{MERGED_PDF_FILENAME}"
+    return {
+        "artifact_job_id": job_id,
+        "output_visual_href": merged_href,
+        "output_visual_kind": "pdf",
+        "output_pdf_href": merged_href,
+        "output_merged_pdf_href": merged_href,
+        "output_word_href": f"/compare/artifacts/{job_id}/{WORD_OUTPUT_FILENAME}",
+    }

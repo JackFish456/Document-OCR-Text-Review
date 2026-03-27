@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.models.comparison import CompareResponse
 from app.models.match import ComparisonReport, ComparisonSummary, MatchType
 from app.models.ocr import BoundingBox
+from app.models.review_flag import ReviewFlag, ReviewFlagSeverity, ReviewFlagType
 from app.reporting.comparison_docx import build_comparison_docx_bytes
 from app.reporting.visual_diff import NormalizedBoundingBox, VisualAnnotation, VisualDiffManifest
 
@@ -34,7 +35,16 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
         extra_target=[],
         uncertain=[],
     )
-    response = CompareResponse(comparison_id=uuid4(), report=report, review_flags=[], extras={})
+    flags = [
+        ReviewFlag(
+            type=ReviewFlagType.CHANGED_VALUE,
+            severity=ReviewFlagSeverity.HIGH,
+            field_reference="field-001",
+            reason="Value changed from OLD to NEW",
+            confidence=0.93,
+        )
+    ]
+    response = CompareResponse(comparison_id=uuid4(), report=report, review_flags=flags, extras={})
     ann = VisualAnnotation(
         annotation_id="ann-001",
         index=1,
@@ -59,16 +69,56 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         doc_xml = zf.read("word/document.xml").decode("utf-8")
     assert "OLD" in doc_xml and "NEW" in doc_xml
+    assert "Comparison report" in doc_xml
     assert "Comparison ID:" not in doc_xml
     assert "Review flags" not in doc_xml
+    assert "Value changed from OLD to NEW" not in doc_xml
+    assert "field-001" not in doc_xml
     assert "<w:t>Notes</w:t>" not in doc_xml
     assert "Executive summary" not in doc_xml
     assert "Overview" not in doc_xml
-    assert doc_xml.index("Drawing comparison summary") < doc_xml.index(
-        "Detailed findings (matches PDF index numbers)"
-    )
+    assert "Open flags" not in doc_xml
+    assert "Drawing comparison summary" not in doc_xml
+    assert "Detailed findings (matches PDF index numbers)" not in doc_xml
     assert "<w:t>Confidence</w:t>" in doc_xml
     assert "<w:t>Match type</w:t>" in doc_xml
+
+
+def test_build_comparison_docx_custom_title_from_extras() -> None:
+    summary = ComparisonSummary(
+        total_source=0,
+        matched=0,
+        changed=0,
+        missing=0,
+        extra_target=0,
+        uncertain=0,
+    )
+    report = ComparisonReport(
+        summary=summary,
+        matches=[],
+        missing=[],
+        extra_target=[],
+        uncertain=[],
+    )
+    response = CompareResponse(
+        report=report,
+        review_flags=[],
+        extras={"comparison_docx_title": "Q4 title block review"},
+    )
+    manifest = VisualDiffManifest(
+        comparison_id="c1",
+        source_image_width=8,
+        source_image_height=8,
+        target_image_width=8,
+        target_image_height=8,
+        summary=summary,
+        annotations=[],
+    )
+    raw = build_comparison_docx_bytes(response, manifest)
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        doc_xml = zf.read("word/document.xml").decode("utf-8")
+    assert "Q4 title block review" in doc_xml
+    assert "Comparison report" not in doc_xml
 
 
 def test_build_comparison_docx_no_annotations() -> None:
@@ -101,4 +151,7 @@ def test_build_comparison_docx_no_annotations() -> None:
     assert raw[:2] == b"PK"
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         doc_xml = zf.read("word/document.xml").decode("utf-8")
-    assert "No visible differences" in doc_xml
+    assert "Comparison report" in doc_xml
+    assert "<w:t>Confidence</w:t>" in doc_xml
+    assert "<w:t>Match type</w:t>" in doc_xml
+    assert "No visible differences" not in doc_xml

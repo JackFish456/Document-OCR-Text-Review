@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.ocr import BoundingBox, OCRToken, _normalize_ocr_text
 from app.models.spatial_metadata import SpatialMetadata
 from app.text_normalization import normalize_label, normalize_value
+from app.vector_store.base import VectorCandidate
 
 
 class ExtractedField(BaseModel):
@@ -35,6 +36,10 @@ class ExtractedField(BaseModel):
     spatial: SpatialMetadata | None = Field(
         default=None,
         description="Optional layout/cluster/overlay hints; bbox remains the geometry of record",
+    )
+    vector_candidates: list[VectorCandidate] | None = Field(
+        default=None,
+        description="Top-k target fields from vector retrieval when hybrid matching ran",
     )
 
     @model_validator(mode="after")

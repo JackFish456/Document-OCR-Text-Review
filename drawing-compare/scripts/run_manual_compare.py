@@ -9,10 +9,40 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.api.deps import build_compare_service
+from app.core.config import Settings, get_settings
+from app.parsing.fields import RegionParser
+from app.reporting.builder import ComparisonReportBuilder
+from app.reporting.llm_summary import summarizer_from_settings
 from app.reporting.markdown_report import build_comparison_markdown
 from app.reporting.reviewer_bundle import build_reviewer_bundle
 from app.reporting.visual_diff import image_to_png_bytes
+from app.rules.review import ReviewRulesEngine
+from app.services.compare import DrawingCompareService
+
+
+def _effective_settings_for_run(
+    *,
+    use_vector: bool | None,
+    vector_top_k: int | None,
+) -> Settings:
+    """Apply CLI overrides on top of :func:`~app.core.config.get_settings`."""
+    base = get_settings()
+    updates: dict[str, Any] = {}
+    if use_vector is not None:
+        updates["ENABLE_VECTOR_MATCHING"] = use_vector
+    if vector_top_k is not None:
+        updates["VECTOR_TOP_K"] = vector_top_k
+    return base.model_copy(update=updates) if updates else base
+
+
+def _build_compare_service(settings: Settings) -> DrawingCompareService:
+    parser = RegionParser()
+    rules = ReviewRulesEngine(settings)
+    reporter = ComparisonReportBuilder(
+        rules,
+        llm_summarizer=summarizer_from_settings(settings.report_llm_summary),
+    )
+    return DrawingCompareService(settings=settings, parser=parser, reporter=reporter)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -41,6 +71,22 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also write the legacy debug bundle (raw JSON, manifest, HTML, and PNG overlay).",
     )
+    parser.add_argument(
+        "--use-vector",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable or disable hybrid vector matching (Qdrant) for this run only. "
+            "Omit both --use-vector and --no-use-vector to use config defaults."
+        ),
+    )
+    parser.add_argument(
+        "--vector-top-k",
+        type=int,
+        default=None,
+        metavar="K",
+        help="Vector retrieval top-k for this run (default: VECTOR_TOP_K from config).",
+    )
     return parser.parse_args()
 
 
@@ -52,6 +98,8 @@ def run_manual_compare(
     out_root: Path,
     run_id: str | None = None,
     full_artifacts: bool = False,
+    use_vector: bool | None = None,
+    vector_top_k: int | None = None,
 ) -> dict[str, Any]:
     source = source.expanduser().resolve()
     target = target.expanduser().resolve()
@@ -64,7 +112,11 @@ def run_manual_compare(
     out_dir = out_root / resolved_run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    svc = build_compare_service()
+    settings = _effective_settings_for_run(
+        use_vector=use_vector,
+        vector_top_k=vector_top_k,
+    )
+    svc = _build_compare_service(settings)
     resp, compare_artifacts = svc.compare_paths_with_artifacts(
         source,
         target,
@@ -140,6 +192,10 @@ def run_manual_compare(
                 "visual_annotation_count": bundle.manifest.annotation_count,
                 "visual_overlay_kind": bundle.visual_kind,
                 "full_artifacts": full_artifacts,
+                "vector_matching": {
+                    "ENABLE_VECTOR_MATCHING": settings.ENABLE_VECTOR_MATCHING,
+                    "VECTOR_TOP_K": settings.VECTOR_TOP_K,
+                },
                 "primary_reviewer_artifacts": primary_artifacts,
                 "comparison_llm_usage": llm_usage_payload,
                 "debug_artifacts": debug_artifacts or None,
@@ -177,6 +233,8 @@ def main() -> int:
         out_root=args.out_root,
         run_id=args.run_id,
         full_artifacts=args.full_artifacts,
+        use_vector=args.use_vector,
+        vector_top_k=args.vector_top_k,
     )
 
     print(f"OUT_DIR={outputs['out_dir']}")

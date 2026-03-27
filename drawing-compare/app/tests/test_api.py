@@ -5,12 +5,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import cv2
+import fitz
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import reset_settings_cache
 from app.main import create_app
+from app.services.compare import DrawingCompareService
 
 
 def test_latest_text_diff_no_runs_returns_instructions(tmp_path: Path) -> None:
@@ -262,3 +264,191 @@ def test_compare_multipart_bad_extension() -> None:
         ],
     )
     assert r.status_code == 400
+
+
+def test_compare_batch_paths_label_mismatch_is_422(tmp_path: Path) -> None:
+    baseline = tmp_path / "base.png"
+    c1 = tmp_path / "c1.png"
+    baseline.write_bytes(_mini_png())
+    c1.write_bytes(_mini_png())
+    client = TestClient(create_app())
+    r = client.post(
+        "/compare/paths/batch",
+        json={
+            "baseline_uri": str(baseline),
+            "candidate_uris": [str(c1)],
+            "candidate_labels": ["a", "extra"],
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_compare_batch_paths_merged_pdf_two_candidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True)
+    baseline = tmp_path / "base.png"
+    c1 = tmp_path / "c1.png"
+    c2 = tmp_path / "c2.png"
+    baseline.write_bytes(_mini_png())
+    c1.write_bytes(_mini_png())
+    c2.write_bytes(_mini_png())
+    monkeypatch.setenv("DRAWING_COMPARE_DATA_DIR", str(data_dir))
+    reset_settings_cache()
+    try:
+        client = TestClient(create_app())
+
+        r_single = client.post(
+            "/compare/paths",
+            json={"drawing_a_uri": str(baseline), "drawing_b_uri": str(c1)},
+        )
+        assert r_single.status_code == 200, r_single.text
+        href_single = r_single.json()["extras"]["output_visual_href"]
+        pdf_single = client.get(href_single).content
+        doc_single = fitz.open(stream=pdf_single, filetype="pdf")
+        try:
+            n_pages_one = doc_single.page_count
+        finally:
+            doc_single.close()
+        assert n_pages_one >= 1
+
+        r = client.post(
+            "/compare/paths/batch",
+            json={
+                "baseline_uri": str(baseline),
+                "candidate_uris": [str(c1), str(c2)],
+                "candidate_labels": ["first", "second"],
+                "include_text_reports": False,
+                "ocr_provider": "stub",
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["pair_count"] == 2
+        assert body["pairs_succeeded"] == 2
+        assert len(body["pairs"]) == 2
+        assert body["pairs"][0]["ok"] is True
+        assert body["pairs"][0]["candidate_label"] == "first"
+        assert body["pairs"][1]["ok"] is True
+        assert body["pairs"][1]["candidate_label"] == "second"
+        assert "comparison_json_report" not in body["pairs"][0]["pair_extras"]
+        extras = body["extras"]
+        assert extras["batch_mode"] == "baseline_many"
+        assert extras["output_merged_pdf_href"] == extras["output_pdf_href"]
+        assert extras["output_visual_href"].endswith("visual_diff_overlay_merged.pdf")
+        merged = client.get(extras["output_merged_pdf_href"]).content
+        assert merged[:4] == b"%PDF"
+        doc_merged = fitz.open(stream=merged, filetype="pdf")
+        try:
+            assert doc_merged.page_count == n_pages_one * 2
+        finally:
+            doc_merged.close()
+    finally:
+        reset_settings_cache()
+
+
+def test_compare_batch_paths_partial_failure_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True)
+    baseline = tmp_path / "base.png"
+    c1 = tmp_path / "c1.png"
+    c2 = tmp_path / "c2.png"
+    baseline.write_bytes(_mini_png())
+    c1.write_bytes(_mini_png())
+    c2.write_bytes(_mini_png())
+    monkeypatch.setenv("DRAWING_COMPARE_DATA_DIR", str(data_dir))
+    reset_settings_cache()
+    try:
+        client = TestClient(create_app())
+        orig = DrawingCompareService.compare_paths_with_artifacts
+        call_count = {"n": 0}
+
+        def wrapped(self: DrawingCompareService, *a: object, **kw: object):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                msg = "simulated pair failure"
+                raise ValueError(msg)
+            return orig(self, *a, **kw)
+
+        with patch.object(DrawingCompareService, "compare_paths_with_artifacts", wrapped):
+            r = client.post(
+                "/compare/paths/batch",
+                json={
+                    "baseline_uri": str(baseline),
+                    "candidate_uris": [str(c1), str(c2)],
+                    "fail_fast": False,
+                    "ocr_provider": "stub",
+                    "include_text_reports": False,
+                },
+            )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["pairs_succeeded"] == 1
+        assert body["pairs"][0]["ok"] is True
+        assert body["pairs"][1]["ok"] is False
+        assert body["pairs"][1]["error"] is not None
+        extras = body["extras"]
+        merged = client.get(extras["output_merged_pdf_href"]).content
+        doc_merged = fitz.open(stream=merged, filetype="pdf")
+        try:
+            r0 = client.post(
+                "/compare/paths",
+                json={"drawing_a_uri": str(baseline), "drawing_b_uri": str(c1)},
+            )
+            p0 = client.get(r0.json()["extras"]["output_visual_href"]).content
+            d0 = fitz.open(stream=p0, filetype="pdf")
+            try:
+                assert doc_merged.page_count == d0.page_count
+            finally:
+                d0.close()
+        finally:
+            doc_merged.close()
+    finally:
+        reset_settings_cache()
+
+
+def test_compare_batch_paths_fail_fast_returns_400(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True)
+    baseline = tmp_path / "base.png"
+    c1 = tmp_path / "c1.png"
+    c2 = tmp_path / "c2.png"
+    baseline.write_bytes(_mini_png())
+    c1.write_bytes(_mini_png())
+    c2.write_bytes(_mini_png())
+    monkeypatch.setenv("DRAWING_COMPARE_DATA_DIR", str(data_dir))
+    reset_settings_cache()
+    try:
+        client = TestClient(create_app())
+        orig = DrawingCompareService.compare_paths_with_artifacts
+        call_count = {"n": 0}
+
+        def wrapped(self: DrawingCompareService, *a: object, **kw: object):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                msg = "simulated pair failure"
+                raise ValueError(msg)
+            return orig(self, *a, **kw)
+
+        with patch.object(DrawingCompareService, "compare_paths_with_artifacts", wrapped):
+            r = client.post(
+                "/compare/paths/batch",
+                json={
+                    "baseline_uri": str(baseline),
+                    "candidate_uris": [str(c1), str(c2)],
+                    "fail_fast": True,
+                    "ocr_provider": "stub",
+                },
+            )
+        assert r.status_code == 400
+        assert "simulated pair failure" in (r.json().get("detail") or "")
+    finally:
+        reset_settings_cache()

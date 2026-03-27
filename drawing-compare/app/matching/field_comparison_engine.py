@@ -16,6 +16,7 @@ from rapidfuzz import fuzz
 from app.matching.bipartite_assignment import optimal_assignment_max_weight
 from app.models.extraction import ExtractedField
 from app.models.match import ComparisonReport, MatchResult, MatchType
+from app.vector_store.base import VectorCandidate
 
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 
@@ -37,6 +38,8 @@ class FieldComparisonConfig:
     weight_value: float = 0.35
     weight_token_overlap: float = 0.12
     weight_regex_compat: float = 0.08
+    # When vector similarity is applied, fuzzy weights are scaled by (1 - weight_vector).
+    weight_vector: float = 0.25
 
     # Alignment: minimum composite to allow an edge in global one-to-one assignment.
     min_pair_composite: float = 0.38
@@ -58,6 +61,7 @@ class FieldComparisonConfig:
         fuzzy_match_threshold: float = 0.92,
         fuzzy_changed_threshold: float = 0.75,
         uncertain_score_low: float = 0.55,
+        vector_weight: float = 0.25,
     ) -> FieldComparisonConfig:
         """Map legacy :class:`~app.core.config.Settings` fuzzy fields to engine thresholds."""
         return FieldComparisonConfig(
@@ -68,6 +72,7 @@ class FieldComparisonConfig:
             partial_composite_min=max(0.45, fuzzy_changed_threshold - 0.1),
             uncertain_composite_max=max(uncertain_score_low, 0.5),
             min_pair_composite=max(0.3, uncertain_score_low - 0.15),
+            weight_vector=vector_weight,
         )
 
 
@@ -79,6 +84,7 @@ class PairScoreBreakdown:
     value_similarity: float
     token_overlap: float
     regex_compatibility: float
+    vector_similarity: float | None
     composite_score: float
     reasons: tuple[str, ...]
 
@@ -153,10 +159,68 @@ def _effective_weights(
     return w_l, w_v, w_t, w_r
 
 
+def _composite_weights_with_vector(
+    *,
+    label_a: str,
+    label_b: str,
+    cfg: FieldComparisonConfig,
+) -> tuple[float, float, float, float, float]:
+    """Scale fuzzy weights by ``(1 - weight_vector)`` and reserve ``weight_vector`` for vector."""
+    w_l, w_v, w_t, w_r = _effective_weights(label_a=label_a, label_b=label_b, cfg=cfg)
+    w_vec = cfg.weight_vector
+    if w_vec <= 0.0:
+        return w_l, w_v, w_t, w_r, 0.0
+    scale = 1.0 - w_vec
+    return scale * w_l, scale * w_v, scale * w_t, scale * w_r, w_vec
+
+
+def _target_matches_vector_candidate(candidate: VectorCandidate, target: ExtractedField) -> bool:
+    pl = candidate.payload
+    if pl.get("label") != target.label:
+        return False
+    if pl.get("value") != target.value:
+        return False
+    if pl.get("field_type") != target.field_type:
+        return False
+    page = pl.get("page")
+    if page is not None and int(page) != int(target.page_number):
+        return False
+    return True
+
+
+def _allowed_target_indices_for_source(
+    src: ExtractedField,
+    target_fields: list[ExtractedField],
+) -> set[int] | None:
+    """``None`` = no vector restriction; otherwise only these target indices are candidates."""
+    if src.vector_candidates is None:
+        return None
+    allowed: set[int] = set()
+    for j, tgt in enumerate(target_fields):
+        for cand in src.vector_candidates:
+            if _target_matches_vector_candidate(cand, tgt):
+                allowed.add(j)
+                break
+    return allowed
+
+
+def _vector_similarity_for_target(src: ExtractedField, tgt: ExtractedField) -> float | None:
+    if src.vector_candidates is None:
+        return None
+    best: float | None = None
+    for cand in src.vector_candidates:
+        if _target_matches_vector_candidate(cand, tgt):
+            s = float(cand.score)
+            best = s if best is None else max(best, s)
+    return best
+
+
 def compute_pair_breakdown(
     source: ExtractedField,
     target: ExtractedField,
     cfg: FieldComparisonConfig,
+    *,
+    vector_similarity: float | None = None,
 ) -> PairScoreBreakdown:
     la, lb = _normalized_label(source), _normalized_label(target)
     va, vb = _normalized_value(source), _normalized_value(target)
@@ -168,22 +232,47 @@ def compute_pair_breakdown(
     token_ov = _token_overlap_score(combined_for_tokens, combined_for_tokens_t)
     regex_c = regex_compatibility(va or source.value, vb or target.value)
 
-    w_l, w_v, w_t, w_r = _effective_weights(label_a=la, label_b=lb, cfg=cfg)
-    composite = w_l * label_sim + w_v * value_sim + w_t * token_ov + w_r * regex_c
+    use_vector = vector_similarity is not None and cfg.weight_vector > 0.0
+    vec_sim: float | None = float(vector_similarity) if use_vector else None
 
-    reasons = (
-        f"normalized_label_similarity={label_sim:.3f}",
-        f"normalized_value_similarity={value_sim:.3f}",
-        f"token_overlap={token_ov:.3f}",
-        f"regex_compatibility={regex_c:.3f}",
-        f"composite={composite:.3f} (weights label={w_l:.2f} value={w_v:.2f} "
-        f"token={w_t:.2f} regex={w_r:.2f})",
-    )
+    if use_vector and vec_sim is not None:
+        w_l, w_v, w_t, w_r, w_vec = _composite_weights_with_vector(
+            label_a=la, label_b=lb, cfg=cfg
+        )
+        composite = (
+            w_l * label_sim
+            + w_v * value_sim
+            + w_t * token_ov
+            + w_r * regex_c
+            + w_vec * vec_sim
+        )
+        reasons = (
+            f"normalized_label_similarity={label_sim:.3f}",
+            f"normalized_value_similarity={value_sim:.3f}",
+            f"token_overlap={token_ov:.3f}",
+            f"regex_compatibility={regex_c:.3f}",
+            f"vector_similarity={vec_sim:.3f}",
+            f"composite={composite:.3f} (weights label={w_l:.2f} value={w_v:.2f} "
+            f"token={w_t:.2f} regex={w_r:.2f} vector={w_vec:.2f})",
+        )
+    else:
+        w_l, w_v, w_t, w_r = _effective_weights(label_a=la, label_b=lb, cfg=cfg)
+        composite = w_l * label_sim + w_v * value_sim + w_t * token_ov + w_r * regex_c
+        reasons = (
+            f"normalized_label_similarity={label_sim:.3f}",
+            f"normalized_value_similarity={value_sim:.3f}",
+            f"token_overlap={token_ov:.3f}",
+            f"regex_compatibility={regex_c:.3f}",
+            f"composite={composite:.3f} (weights label={w_l:.2f} value={w_v:.2f} "
+            f"token={w_t:.2f} regex={w_r:.2f})",
+        )
+
     return PairScoreBreakdown(
         label_similarity=label_sim,
         value_similarity=value_sim,
         token_overlap=token_ov,
         regex_compatibility=regex_c,
+        vector_similarity=vec_sim,
         composite_score=composite,
         reasons=reasons,
     )
@@ -270,13 +359,26 @@ class FieldComparisonEngine:
         weight: list[list[float | None]] = [[None] * m for _ in range(n)]
         breakdown: list[list[PairScoreBreakdown | None]] = [[None] * m for _ in range(n)]
         for i, src in enumerate(source_fields):
+            allowed_j = _allowed_target_indices_for_source(src, target_fields)
             for j, tgt in enumerate(target_fields):
                 if (
                     not self._cfg.allow_cross_page_match
                     and src.page_number != tgt.page_number
                 ):
                     continue
-                bd = compute_pair_breakdown(src, tgt, self._cfg)
+                if allowed_j is not None and j not in allowed_j:
+                    continue
+                vec_sim: float | None = None
+                if allowed_j is not None:
+                    vec_sim = _vector_similarity_for_target(src, tgt)
+                    if vec_sim is None:
+                        continue
+                bd = compute_pair_breakdown(
+                    src,
+                    tgt,
+                    self._cfg,
+                    vector_similarity=vec_sim,
+                )
                 if bd.composite_score < self._cfg.min_pair_composite:
                     continue
                 weight[i][j] = bd.composite_score

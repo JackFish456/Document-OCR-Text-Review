@@ -12,6 +12,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.reporting.reviewer_bundle import (
+    MERGED_PDF_FILENAME,
     PDF_VISUAL_FILENAME,
     PNG_VISUAL_FILENAME,
     WORD_OUTPUT_FILENAME,
@@ -29,6 +30,7 @@ ARTIFACT_FILENAMES = frozenset(
     {
         PDF_VISUAL_FILENAME,
         PNG_VISUAL_FILENAME,
+        MERGED_PDF_FILENAME,
         "visual_diff_report.html",
         "visual_diff_manifest.json",
         LLM_USAGE_FILENAME,
@@ -112,6 +114,26 @@ def persist_reviewer_artifacts(
         )
         if bundle.html is not None:
             (base / "visual_diff_report.html").write_text(bundle.html, encoding="utf-8")
+    cleanup_stale_compare_jobs()
+
+
+def persist_batch_reviewer_artifacts(
+    job_id: str,
+    *,
+    merged_pdf_bytes: bytes,
+    comparison_docx: bytes,
+    llm_usage: dict[str, Any] | None = None,
+) -> None:
+    """Write stapled batch PDF, Word summary, and LLM usage for one batch job."""
+    if not is_valid_job_id(job_id):
+        msg = f"invalid job_id: {job_id!r}"
+        raise ValueError(msg)
+    base = compare_jobs_root() / job_id
+    base.mkdir(parents=True, exist_ok=False)
+    (base / MERGED_PDF_FILENAME).write_bytes(merged_pdf_bytes)
+    (base / WORD_OUTPUT_FILENAME).write_bytes(comparison_docx)
+    payload = llm_usage if isinstance(llm_usage, dict) else {}
+    (base / LLM_USAGE_FILENAME).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     cleanup_stale_compare_jobs()
 
 

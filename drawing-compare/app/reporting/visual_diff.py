@@ -744,6 +744,46 @@ def render_visual_diff_overlay_pdf_pages(
         doc.close()
 
 
+def merge_reviewer_visual_bytes(
+    parts: list[tuple[bytes, str]],
+) -> bytes:
+    """Concatenate pairwise annotated exports into one multi-page PDF.
+
+    Each item is ``(visual_bytes, kind)`` where ``kind`` is ``\"pdf\"`` or ``\"png\"``.
+    PNG segments are converted to single-page PDFs before insertion so the result
+    is always a PDF byte stream.
+    """
+    merged = fitz.open()
+    try:
+        for blob, kind in parts:
+            if not blob:
+                continue
+            is_pdf = blob[:4] == b"%PDF"
+            if kind == "pdf" and is_pdf:
+                src = fitz.open(stream=blob, filetype="pdf")
+                try:
+                    merged.insert_pdf(src)
+                finally:
+                    src.close()
+            else:
+                imgdoc = fitz.open(stream=blob, filetype="png")
+                try:
+                    pdf_bytes = imgdoc.convert_to_pdf()
+                finally:
+                    imgdoc.close()
+                src = fitz.open(stream=pdf_bytes, filetype="pdf")
+                try:
+                    merged.insert_pdf(src)
+                finally:
+                    src.close()
+        if merged.page_count == 0:
+            msg = "merge_reviewer_visual_bytes produced no pages"
+            raise ValueError(msg)
+        return merged.write(deflate=True)
+    finally:
+        merged.close()
+
+
 def build_visual_diff_html(
     manifest: VisualDiffManifest,
     *,
@@ -1222,12 +1262,6 @@ def _build_visual_diff_html_multipage(
         "pages": page_payloads,
     }
     rows_html = _table_rows_markup(manifest)
-    non_exact = (
-        manifest.summary.changed
-        + manifest.summary.missing
-        + manifest.summary.extra_target
-        + manifest.summary.uncertain
-    )
     rows_or_empty = (
         _empty_table_markup()
         if not manifest.annotations
