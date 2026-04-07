@@ -254,6 +254,8 @@ def test_build_visual_diff_artifacts_html_contains_expected_sections() -> None:
     assert bundle.overlay_pdf.startswith(b"%PDF-")
     assert "Visual Overlay Diff Report" in bundle.html
     assert "data-toggle-type=\"changed_value\"" in bundle.html
+    assert "Match confidence" in bundle.html
+    assert "OCR confidence" in bundle.html
 
 
 def test_multipage_visual_bundle_has_two_slices_and_multipage_html() -> None:

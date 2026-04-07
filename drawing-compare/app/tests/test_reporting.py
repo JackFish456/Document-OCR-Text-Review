@@ -140,6 +140,8 @@ def test_markdown_sections_and_summary() -> None:
     assert "## Extra text on the target drawing" in md
     assert "## Review flags" in md
     assert "High" in md or "Medium" in md or "Low" in md
+    assert "Match confidence" in md
+    assert "OCR confidence" in md
 
 
 def test_markdown_uncertain_section_present() -> None:
@@ -156,6 +158,8 @@ def test_markdown_includes_annotated_pdf_link_and_numbered_findings() -> None:
             source_text="REV: A",
             target_text="REV: B",
             confidence=0.88,
+            source_ocr_confidence=0.91,
+            target_ocr_confidence=0.86,
         ),
         SimpleNamespace(
             index=2,
@@ -163,6 +167,8 @@ def test_markdown_includes_annotated_pdf_link_and_numbered_findings() -> None:
             source_text="NOTE: Remove",
             target_text="",
             confidence=1.0,
+            source_ocr_confidence=0.93,
+            target_ocr_confidence=None,
         ),
         SimpleNamespace(
             index=3,
@@ -170,6 +176,8 @@ def test_markdown_includes_annotated_pdf_link_and_numbered_findings() -> None:
             source_text="",
             target_text="NOTE: Add",
             confidence=1.0,
+            source_ocr_confidence=None,
+            target_ocr_confidence=0.89,
         ),
     ]
 
@@ -182,7 +190,7 @@ def test_markdown_includes_annotated_pdf_link_and_numbered_findings() -> None:
     assert "**Open annotated PDF:** [visual_diff_overlay.pdf](visual_diff_overlay.pdf)" in md
     assert "## Annotated findings" in md
     assert (
-        "| Annotation # | Finding type | Source text | Target text | Confidence | Annotated visual |"
+        "| Annotation # | Finding type | Source text | Target text | Match confidence | OCR confidence | Annotated visual |"
         in md
     )
     assert md.count("[Open PDF](visual_diff_overlay.pdf)") == 3

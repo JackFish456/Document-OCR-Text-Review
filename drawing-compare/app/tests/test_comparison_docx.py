@@ -42,6 +42,8 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
         source_text="OLD",
         target_text="NEW",
         confidence=0.9,
+        source_ocr_confidence=0.95,
+        target_ocr_confidence=0.85,
         reason="test",
         overlay_bbox_normalized=NormalizedBoundingBox(x1=0.1, y1=0.1, x2=0.2, y2=0.2),
     )
@@ -67,7 +69,8 @@ def test_build_comparison_docx_zip_and_table_row() -> None:
     assert doc_xml.index("Drawing comparison summary") < doc_xml.index(
         "Detailed findings (matches PDF index numbers)"
     )
-    assert "<w:t>Confidence</w:t>" in doc_xml
+    assert "<w:t>Match confidence</w:t>" in doc_xml
+    assert "<w:t>OCR confidence</w:t>" in doc_xml
     assert "<w:t>Match type</w:t>" in doc_xml
 
 

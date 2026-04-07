@@ -58,6 +58,25 @@ def severity_plain(sev: ReviewFlagSeverity) -> str:
     return SEVERITY_GUIDANCE.get(sev, sev.value)
 
 
+def format_confidence(value: float | None) -> str:
+    """Human-readable confidence percentage; em dash when unavailable."""
+    if value is None:
+        return "—"
+    return f"{value:.0%}"
+
+
+def format_ocr_confidence_pair(
+    source: ExtractedField | None,
+    target: ExtractedField | None,
+) -> str:
+    """Display source/target OCR confidence without conflating it with match confidence."""
+    src = format_confidence(source.confidence) if source is not None else None
+    tgt = format_confidence(target.confidence) if target is not None else None
+    if src and tgt:
+        return f"{src} / {tgt}"
+    return src or tgt or "—"
+
+
 def summarize_pair(m: MatchResult) -> dict[str, str | float | None]:
     """Stable key-value row for JSON tables."""
     src = m.source_field
@@ -73,6 +92,7 @@ def summarize_pair(m: MatchResult) -> dict[str, str | float | None]:
         "on_source_drawing": field_caption(src) if src else None,
         "on_target_drawing": field_caption(tgt) if tgt else None,
         "match_confidence": round(m.confidence, 4),
+        "ocr_confidence": format_ocr_confidence_pair(src, tgt),
         "technical_match_type": m.match_type.value,
         "technical_notes": m.reason,
     }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from types import SimpleNamespace
 from typing import Protocol
 
 from app.models.comparison import CompareResponse
@@ -10,6 +11,8 @@ from app.models.match import MatchType
 from app.reporting.display import (
     field_caption,
     flag_type_plain,
+    format_confidence,
+    format_ocr_confidence_pair,
     match_type_plain,
     severity_plain,
     summarize_pair,
@@ -27,6 +30,8 @@ class AnnotatedFinding(Protocol):
     source_text: str
     target_text: str
     confidence: float
+    source_ocr_confidence: float | None
+    target_ocr_confidence: float | None
 
 
 def _esc_cell(s: object) -> str:
@@ -127,7 +132,15 @@ def build_comparison_markdown(
                         match_type_plain(finding.match_type),
                         str(finding.source_text or "—"),
                         str(finding.target_text or "—"),
-                        f"{finding.confidence:.0%}",
+                        format_confidence(finding.confidence),
+                        format_ocr_confidence_pair(
+                            SimpleNamespace(confidence=getattr(finding, "source_ocr_confidence"))
+                            if getattr(finding, "source_ocr_confidence", None) is not None
+                            else None,
+                            SimpleNamespace(confidence=getattr(finding, "target_ocr_confidence"))
+                            if getattr(finding, "target_ocr_confidence", None) is not None
+                            else None,
+                        ),
                         (
                             f"[Open {annotated_visual_kind.upper()}]({annotated_pdf_href})"
                             if annotated_pdf_href
@@ -142,7 +155,8 @@ def build_comparison_markdown(
                         "Finding type",
                         "Source text",
                         "Target text",
-                        "Confidence",
+                        "Match confidence",
+                        "OCR confidence",
                         "Annotated visual",
                     ],
                     rows,
@@ -167,12 +181,19 @@ def build_comparison_markdown(
                     str(d.get("field_label") or "—"),
                     str(d.get("on_source_drawing") or "—"),
                     str(d.get("on_target_drawing") or "—"),
-                    f"{float(d['match_confidence']):.0%}",
+                    format_confidence(float(d["match_confidence"])),
+                    str(d.get("ocr_confidence") or "—"),
                 ]
             )
         lines.append(
             _md_table(
-                ["Field (if known)", "On source drawing", "On target drawing", "Confidence"],
+                [
+                    "Field (if known)",
+                    "On source drawing",
+                    "On target drawing",
+                    "Match confidence",
+                    "OCR confidence",
+                ],
                 rows,
             )
         )
@@ -186,8 +207,20 @@ def build_comparison_markdown(
         for m in report.missing:
             src = m.source_field
             assert src is not None
-            rows.append([field_caption(src), src.field_type, f"{m.confidence:.0%}"])
-        lines.append(_md_table(["What we saw on source", "Field type", "Confidence"], rows))
+            rows.append(
+                [
+                    field_caption(src),
+                    src.field_type,
+                    format_confidence(m.confidence),
+                    format_confidence(src.confidence),
+                ]
+            )
+        lines.append(
+            _md_table(
+                ["What we saw on source", "Field type", "Match confidence", "OCR confidence"],
+                rows,
+            )
+        )
 
     section_title("Extra text on the target drawing")
     if not report.extra_target:
@@ -198,8 +231,20 @@ def build_comparison_markdown(
         for m in report.extra_target:
             tgt = m.target_field
             assert tgt is not None
-            rows.append([field_caption(tgt), tgt.field_type, f"{m.confidence:.0%}"])
-        lines.append(_md_table(["What we saw on target", "Field type", "Confidence"], rows))
+            rows.append(
+                [
+                    field_caption(tgt),
+                    tgt.field_type,
+                    format_confidence(m.confidence),
+                    format_confidence(tgt.confidence),
+                ]
+            )
+        lines.append(
+            _md_table(
+                ["What we saw on target", "Field type", "Match confidence", "OCR confidence"],
+                rows,
+            )
+        )
 
     partial = [m for m in report.matches if m.match_type == MatchType.PARTIAL_MATCH]
     section_title("Partial matches (similar but not identical)")
@@ -216,12 +261,13 @@ def build_comparison_markdown(
                     str(d.get("on_source_drawing") or "—"),
                     str(d.get("on_target_drawing") or "—"),
                     match_type_plain(m.match_type),
-                    f"{m.confidence:.0%}",
+                    format_confidence(m.confidence),
+                    str(d.get("ocr_confidence") or "—"),
                 ]
             )
         lines.append(
             _md_table(
-                ["Field (if known)", "Source", "Target", "Status", "Confidence"],
+                ["Field (if known)", "Source", "Target", "Status", "Match confidence", "OCR confidence"],
                 rows,
             )
         )
@@ -238,10 +284,13 @@ def build_comparison_markdown(
                 [
                     str(d.get("on_source_drawing") or "—"),
                     str(d.get("on_target_drawing") or "—"),
-                    f"{m.confidence:.0%}",
+                    format_confidence(m.confidence),
+                    str(d.get("ocr_confidence") or "—"),
                 ]
             )
-        lines.append(_md_table(["Source text", "Target text", "Confidence"], rows))
+        lines.append(
+            _md_table(["Source text", "Target text", "Match confidence", "OCR confidence"], rows)
+        )
 
     section_title("Review flags")
     if not flags:

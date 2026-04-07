@@ -20,7 +20,7 @@ from app.models.comparison import CompareResponse
 from app.models.match import ComparisonSummary, MatchResult, MatchType
 from app.models.ocr import BoundingBox
 from app.preprocessing.types import BGRImage, PreprocessPageResult
-from app.reporting.display import field_caption
+from app.reporting.display import field_caption, format_confidence, format_ocr_confidence_pair
 from app.services.compare_artifacts import CompareArtifacts
 
 _VISIBLE_MATCH_TYPES = frozenset(
@@ -105,6 +105,8 @@ class VisualAnnotation(BaseModel):
     source_text: str = ""
     target_text: str = ""
     confidence: float = Field(ge=0.0, le=1.0)
+    source_ocr_confidence: float | None = None
+    target_ocr_confidence: float | None = None
     reason: str | None = None
     source_bbox: BoundingBox | None = None
     target_bbox: BoundingBox | None = None
@@ -766,7 +768,7 @@ def build_visual_diff_html(
         if not manifest.annotations
         else (
             "<table><thead><tr><th>#</th><th>Type</th><th>Source text</th>"
-            "<th>Target text</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>"
+            "<th>Target text</th><th>Match confidence</th><th>OCR confidence</th><th>Reason</th></tr></thead><tbody>"
             + rows_html
             + "</tbody></table>"
         )
@@ -1233,7 +1235,7 @@ def _build_visual_diff_html_multipage(
         if not manifest.annotations
         else (
             "<table><thead><tr><th>#</th><th>Type</th><th>Source text</th>"
-            "<th>Target text</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>"
+            "<th>Target text</th><th>Match confidence</th><th>OCR confidence</th><th>Reason</th></tr></thead><tbody>"
             + rows_html
             + "</tbody></table>"
         )
@@ -1416,6 +1418,8 @@ def _build_annotation(
         source_text=field_caption(src) if src is not None else "",
         target_text=field_caption(tgt) if tgt is not None else "",
         confidence=result.confidence,
+        source_ocr_confidence=src.confidence if src is not None else None,
+        target_ocr_confidence=tgt.confidence if tgt is not None else None,
         reason=result.reason,
         source_bbox=src.bbox if src is not None else None,
         target_bbox=tgt.bbox if tgt is not None else None,
@@ -1836,6 +1840,12 @@ def _html_payload(
                 "source_text": annotation.source_text,
                 "target_text": annotation.target_text,
                 "confidence": round(annotation.confidence, 4),
+                "source_ocr_confidence": annotation.source_ocr_confidence,
+                "target_ocr_confidence": annotation.target_ocr_confidence,
+                "ocr_confidence_display": format_ocr_confidence_pair(
+                    _field_confidence_stub(annotation.source_ocr_confidence),
+                    _field_confidence_stub(annotation.target_ocr_confidence),
+                ),
                 "reason": annotation.reason or "",
                 "overlay_bbox_normalized": annotation.overlay_bbox_normalized.model_dump(mode="json"),
                 "badge_bbox_normalized": placement.normalized_bbox(
@@ -1885,6 +1895,19 @@ def _legend_markup(manifest: VisualDiffManifest) -> str:
     return "".join(parts)
 
 
+def _field_confidence_stub(confidence: float | None) -> object | None:
+    if confidence is None:
+        return None
+    return type("_ConfidenceOnly", (), {"confidence": confidence})()
+
+
+def _annotation_ocr_confidence_display(annotation: VisualAnnotation) -> str:
+    return format_ocr_confidence_pair(
+        _field_confidence_stub(annotation.source_ocr_confidence),
+        _field_confidence_stub(annotation.target_ocr_confidence),
+    )
+
+
 def _table_rows_markup(manifest: VisualDiffManifest) -> str:
     rows: list[str] = []
     for annotation in manifest.annotations:
@@ -1897,7 +1920,8 @@ def _table_rows_markup(manifest: VisualDiffManifest) -> str:
             f"<td><span class=\"swatch\" style=\"background:{html.escape(style.color_hex)}\"></span> {html.escape(style.label)}</td>"
             f"<td>{html.escape(annotation.source_text or '—')}</td>"
             f"<td>{html.escape(annotation.target_text or '—')}</td>"
-            f"<td>{annotation.confidence:.0%}</td>"
+            f"<td>{format_confidence(annotation.confidence)}</td>"
+            f"<td>{html.escape(_annotation_ocr_confidence_display(annotation))}</td>"
             f"<td>{html.escape((annotation.reason or '').strip() or '—')}</td>"
             "</tr>"
         )
